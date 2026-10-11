@@ -1,5 +1,7 @@
 # PocketPal 16
 
+For future AI maintenance, see [AGENTS.md](AGENTS.md) for the complete llama.cpp update procedure, patch regeneration, known iOS build fixes, verification, and full IPA installation.
+
 A minimal, offline, text-only fork of [PocketPal AI](https://github.com/a-ghorbani/pocketpal-ai) for jailbroken iOS 16 devices. The native IPA built successfully and was installed on a jailbroken iPhone 8 Plus running iOS 16.7.16. LFM2.5 Q4_K_M loaded and generated text on CPU. Metal loading failed on that device; memory use and tokens/sec have not been measured.
 
 Keeps local GGUF chat, Files import, SSH model copying, saved conversations, selectable responses, a system prompt, basic generation settings, and persistent system/light/dark appearance. Uses React Native 0.87.1 and `llama.rn` 0.13.0-rc.7 with a reproducible source patch to [llama.cpp c83f3058b6f876f2f7e6ccbada858b2446860c85](https://github.com/ggml-org/llama.cpp/commit/c83f3058b6f876f2f7e6ccbada858b2446860c85), upstream master verified on October 11, 2026. `scripts/prepare-backend.cjs` applies the pinned patch during dependency installation and regenerates embedded Metal kernels. Text completion uses the GGUF template and raw output; structured tool/reasoning parsing is omitted. The engine builds from source for iOS 16.0, with CPU and Metal enabled. A newer engine supports its implemented architectures; GGUF files for unsupported architectures will still fail to load.
