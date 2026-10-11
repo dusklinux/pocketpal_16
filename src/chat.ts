@@ -22,7 +22,7 @@ export const defaults: Settings = {
   maxTokens: 256,
   temperature: 0.7,
   topP: 0.9,
-  gpu: true,
+  gpu: false,
   systemPrompt: 'You are a helpful assistant. Give clear, concise answers.',
 };
 export type SavedState = {sessions: Session[]; settings: Settings};

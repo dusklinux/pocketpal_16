@@ -156,8 +156,9 @@ test('settings reload only for context or backend changes', async () => {
   const chat = await loaded();
   await chat.updateSettings({...defaults, temperature: 1});
   expect(context.release).not.toHaveBeenCalled();
-  await chat.updateSettings({...defaults, gpu: false});
+  await chat.updateSettings({...defaults, gpu: true});
   expect(chat.loadedPath).toBeNull();
+  await chat.updateSettings({...defaults, gpu: false});
   await chat.loadModel('/one.gguf');
   expect(mockInit.mock.calls.at(-1)![0]).toMatchObject({
     devices: ['CPU'],
@@ -342,4 +343,16 @@ test('saved conversations follow the model directory after an iOS container move
   const chat = await loaded();
   expect(chat.active?.model).toBe('/data/Documents/models/one.gguf');
   await expect(chat.send('continue')).resolves.toBe(true);
+});
+
+test('new installs load on CPU and Metal remains an explicit setting', async () => {
+  const chat = await loaded();
+  expect(mockInit.mock.calls[0][0]).toMatchObject({
+    devices: ['CPU'],
+    n_gpu_layers: 0,
+  });
+  await chat.updateSettings({...defaults, gpu: true});
+  await chat.loadModel('/data/Documents/models/one.gguf');
+  expect(mockInit.mock.calls.at(-1)![0].n_gpu_layers).toBe(99);
+  expect(mockInit.mock.calls.at(-1)![0].devices).toBeUndefined();
 });

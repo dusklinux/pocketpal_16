@@ -9,6 +9,7 @@ import {
   Button,
   FlatList,
   KeyboardAvoidingView,
+  Pressable,
   ScrollView,
   StyleSheet,
   Switch,
@@ -30,6 +31,35 @@ type Page = 'Chat' | 'Models' | 'History' | 'Settings';
 const attempt = (work: () => Promise<unknown>) => {
   work().catch(chat.report);
 };
+
+function IconButton({
+  label,
+  symbol,
+  onPress,
+  disabled = false,
+  styles,
+}: {
+  label: string;
+  symbol: string;
+  onPress: () => void;
+  disabled?: boolean;
+  styles: ReturnType<typeof createStyles>;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{disabled}}
+      disabled={disabled}
+      onPress={onPress}
+      style={({pressed}) => [
+        styles.iconButton,
+        {opacity: disabled ? 0.35 : pressed ? 0.65 : 1},
+      ]}>
+      <Text style={styles.icon}>{symbol}</Text>
+    </Pressable>
+  );
+}
 
 function SettingsForm({
   styles,
@@ -87,7 +117,7 @@ function SettingsForm({
       ))}
       <View style={styles.row}>
         <Text style={[styles.label, styles.flex]}>
-          Try Metal GPU; CPU if unsupported (reloads model)
+          Use Metal GPU (reloads model)
         </Text>
         <Switch
           value={draft.gpu}
@@ -141,6 +171,8 @@ function Main() {
   }, [scheme, appearanceMode]);
   const [revision, redraw] = useReducer(value => value + 1, 0);
   const [page, setPage] = useState<Page>('Chat');
+  const [fullScreen, setFullScreen] = useState(false);
+  const focusedChat = fullScreen && page === 'Chat';
   const [input, setInput] = useState('');
   const [picking, setPicking] = useState(false);
   const activeId = chat.activeId;
@@ -211,26 +243,31 @@ function Main() {
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar
+        hidden={focusedChat}
         barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'}
       />
-      <Text style={styles.title}>PocketPal 16</Text>
-      <View style={styles.tabs}>
-        {(['Chat', 'Models', 'History', 'Settings'] as Page[]).map(name => (
-          <Button
-            color={colors.accent}
-            key={name}
-            title={name}
-            disabled={page === name}
-            onPress={() => setPage(name)}
-          />
-        ))}
-      </View>
-      <Text numberOfLines={2} style={styles.status}>
-        {chat.loadedPath
-          ? `${chat.loadedPath.split('/').pop()} · ${chat.backend}`
-          : 'No model loaded'}
-        {chat.busy ? ' · Working…' : ''}
-      </Text>
+      {!focusedChat && (
+        <>
+          <Text style={styles.title}>PocketPal 16</Text>
+          <View style={styles.tabs}>
+            {(['Chat', 'Models', 'History', 'Settings'] as Page[]).map(name => (
+              <Button
+                color={colors.accent}
+                key={name}
+                title={name}
+                disabled={page === name}
+                onPress={() => setPage(name)}
+              />
+            ))}
+          </View>
+          <Text numberOfLines={2} style={styles.status}>
+            {chat.loadedPath
+              ? `${chat.loadedPath.split('/').pop()} · ${chat.backend}`
+              : 'No model loaded'}
+            {chat.busy ? ' · Working…' : ''}
+          </Text>
+        </>
+      )}
       {!!chat.error && (
         <Text
           selectable
@@ -244,20 +281,27 @@ function Main() {
       )}
       {page === 'Chat' && (
         <KeyboardAvoidingView style={styles.flex} behavior="padding">
-          <View style={styles.row}>
-            <Text numberOfLines={1} style={styles.chatTitle}>
-              {chat.active?.title ?? 'Chat'}
-            </Text>
-            <Button
-              color={colors.accent}
-              title="New chat"
-              disabled={chat.busy}
-              onPress={() => {
-                chat.newChat();
-                setInput('');
-              }}
-            />
-          </View>
+          {!focusedChat && (
+            <View style={styles.row}>
+              <Text numberOfLines={1} style={styles.chatTitle}>
+                {chat.active?.title ?? 'Chat'}
+              </Text>
+              <Button
+                color={colors.accent}
+                title="New chat"
+                disabled={chat.busy}
+                onPress={() => {
+                  chat.newChat();
+                  setInput('');
+                }}
+              />
+              <Button
+                color={colors.accent}
+                title="Fullscreen"
+                onPress={() => setFullScreen(true)}
+              />
+            </View>
+          )}
           <FlatList
             indicatorStyle={scheme === 'dark' ? 'white' : 'black'}
             ref={list}
@@ -289,27 +333,27 @@ function Main() {
                 <Text selectable style={styles.message}>
                   {item.content || '…'}
                 </Text>
-                {!!item.content && (
-                  <Button
-                    color={colors.accent}
-                    title="Copy"
-                    onPress={() =>
-                      NativeModules.RuntimeModule.copyText(item.content)
-                    }
-                  />
-                )}
               </View>
             )}
           />
-          <Button
-            color={colors.accent}
-            title="Retry last response"
-            disabled={
-              chat.busy || !chat.loadedPath || !chat.active?.messages.length
-            }
-            onPress={() => attempt(() => chat.retry())}
-          />
           <View style={styles.composer}>
+            {focusedChat && (
+              <IconButton
+                styles={styles}
+                label="Exit fullscreen"
+                symbol="↙"
+                onPress={() => setFullScreen(false)}
+              />
+            )}
+            <IconButton
+              styles={styles}
+              label="Retry last response"
+              symbol="↻"
+              disabled={
+                chat.busy || !chat.loadedPath || !chat.active?.messages.length
+              }
+              onPress={() => attempt(() => chat.retry())}
+            />
             <TextInput
               keyboardAppearance={scheme}
               placeholderTextColor={colors.placeholder}
@@ -323,15 +367,17 @@ function Main() {
               editable={!chat.busy}
             />
             {chat.generating ? (
-              <Button
-                color={colors.accent}
-                title="Stop"
+              <IconButton
+                styles={styles}
+                label="Stop generation"
+                symbol="■"
                 onPress={() => attempt(() => chat.stop())}
               />
             ) : (
-              <Button
-                color={colors.accent}
-                title="Send"
+              <IconButton
+                styles={styles}
+                label="Send message"
+                symbol="↑"
                 disabled={chat.busy || !chat.loadedPath || !input.trim()}
                 onPress={() => {
                   const text = input;
@@ -491,7 +537,14 @@ const createStyles = (colors: Palette) =>
       color: colors.text,
     },
     messageInput: {flex: 1, maxHeight: 120},
-    composer: {flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8},
+    composer: {flexDirection: 'row', alignItems: 'center', padding: 8, gap: 4},
+    iconButton: {
+      width: 44,
+      height: 44,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    icon: {fontSize: 26, color: colors.accent},
     chatTitle: {
       color: colors.text,
       flex: 1,
