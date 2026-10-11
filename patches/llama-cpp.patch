@@ -106,12 +106,16 @@ index ff46588..f8098fd 100644
  }
  
 diff --git a/llama-rn.podspec b/llama-rn.podspec
-index 413627a..1cb2ce7 100644
+index 413627a..3d590a5 100644
 --- a/llama-rn.podspec
 +++ b/llama-rn.podspec
-@@ -62,7 +62,7 @@ Pod::Spec.new do |s|
+@@ -60,9 +60,10 @@ Pod::Spec.new do |s|
+     s.exclude_files = "#{llama_cpp}/src/llama-quant.cpp", "#{llama_cpp}/ggml/src/ggml.cpp",
+       "#{llama_cpp}/common/{arg,console,debug,download,hf-cache,imatrix-loader,llguidance,preset,subproc}.cpp",
        "#{llama_cpp}/ggml/src/ggml-cpu/hbm.cpp",
-       "#{llama_cpp}/ggml/src/ggml-cpu/{kleidiai,llamafile,arch/wasm}/*",
+-      "#{llama_cpp}/ggml/src/ggml-cpu/{kleidiai,llamafile,arch/wasm}/*",
++      # Device builds use ARM CPU kernels; these backends target other architectures.
++      "#{llama_cpp}/ggml/src/ggml-cpu/{kleidiai,llamafile,amx,spacemit,arch/x86,arch/wasm}/**/*",
        "#{llama_cpp}/vendor/{cpp-httplib,hash/sha1,hash/xxhash}/*",
 -      "#{llama_cpp}/tools/mtmd/debug/*.cpp", "#{codec_cpp}/common/tts_runner*.cpp",
 +      "#{llama_cpp}/tools/mtmd/debug/*.cpp", "#{llama_cpp}/tools/mtmd/mtmd-cli.cpp", "#{llama_cpp}/tools/mtmd/deprecation-warning.cpp", "#{codec_cpp}/common/tts_runner*.cpp",
