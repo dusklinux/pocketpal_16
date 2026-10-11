@@ -86,7 +86,7 @@ function SettingsForm({
         </View>
       ))}
       <View style={styles.row}>
-        <Text style={styles.label}>
+        <Text style={[styles.label, styles.flex]}>
           Try Metal GPU; CPU if unsupported (reloads model)
         </Text>
         <Switch
