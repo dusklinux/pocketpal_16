@@ -5,7 +5,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>PocketPal</string>
+	<string>PocketPal 16</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -20,33 +20,12 @@
 	<string>$(MARKETING_VERSION)</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
-	<key>CFBundleURLTypes</key>
-	<array>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>$(REVERSED_GOOGLE_IOS_CLIENT_ID)</string>
-			</array>
-		</dict>
-		<dict>
-			<key>CFBundleTypeRole</key>
-			<string>Editor</string>
-			<key>CFBundleURLName</key>
-			<string>com.pocketpalai.deeplink</string>
-			<key>CFBundleURLSchemes</key>
-			<array>
-				<string>pocketpal</string>
-			</array>
-		</dict>
-	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>FIREBASE_ANALYTICS_COLLECTION_ENABLED</key>
-	<false/>
-	<key>GIDClientID</key>
-	<string>$(GOOGLE_WEB_CLIENT_ID)</string>
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSAppTransportSecurity</key>
@@ -56,36 +35,8 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
-	<key>NSCameraUsageDescription</key>
-	<string>PocketPal uses your camera to capture images and video for local AI analysis only. All processing happens on your device and no images are transmitted to external servers.</string>
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>PocketPal connects to AI servers you run on your own network (like Ollama or llama.cpp) when you add them as remote endpoints.</string>
-	<key>NSLocationWhenInUseUsageDescription</key>
-	<string>PocketPal never requests or collects your location. A bundled camera library references the system location API to offer optional photo geotagging, which PocketPal leaves turned off.</string>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>PocketPal accesses your photo library to select images for local AI analysis only. Selected images are processed entirely on your device and are never transmitted to external servers.</string>
-	<key>NSSiriUsageDescription</key>
-	<string>PocketPal uses Siri to let you ask questions to your AI Pals using voice commands.</string>
 	<key>RCTNewArchEnabled</key>
 	<true/>
-	<key>UIAppFonts</key>
-	<array>
-		<string>MaterialIcons.ttf</string>
-		<string>MaterialCommunityIcons.ttf</string>
-		<string>Inter-Bold.ttf</string>
-		<string>Inter-Light.ttf</string>
-		<string>Inter-Medium.ttf</string>
-		<string>Inter-Regular.ttf</string>
-		<string>Inter-SemiBold.ttf</string>
-		<string>Inter-Thin.ttf</string>
-		<string>Inter-ExtraBold.ttf</string>
-		<string>Fraunces-Regular.ttf</string>
-		<string>Fraunces-Medium.ttf</string>
-		<string>Fraunces-Italic.ttf</string>
-		<string>Fraunces-MediumItalic.ttf</string>
-		<string>JetBrainsMono-Regular.ttf</string>
-		<string>JetBrainsMono-Medium.ttf</string>
-	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>

@@ -27,18 +27,7 @@
       selectedDebuggerIdentifier = "Xcode.DebuggerFoundation.Debugger.LLDB"
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
-      <Testables>
-         <TestableReference
-            skipped = "NO">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "A826FC292E9ECA9B003F1572"
-               BuildableName = "PocketPalTests.xctest"
-               BlueprintName = "PocketPalTests"
-               ReferencedContainer = "container:PocketPal.xcodeproj">
-            </BuildableReference>
-         </TestableReference>
-      </Testables>
+      <Testables/>
    </TestAction>
    <LaunchAction
       buildConfiguration = "Debug"

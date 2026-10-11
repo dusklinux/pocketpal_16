@@ -1,1 +1,0 @@
-export {SkillsDisplay} from './SkillsDisplay';

@@ -1,0 +1,35 @@
+name: Build PocketPal 16 IPA
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  ios:
+    runs-on: macos-26
+    timeout-minutes: 60
+    env:
+      RNLLAMA_SKIP_POSTINSTALL: '1'
+    steps:
+      - uses: actions/checkout@v7.0.1
+      - uses: actions/setup-node@v7.1.0
+        with:
+          node-version: '24.21.0'
+      - uses: ruby/setup-ruby@v1.328.0
+        with:
+          ruby-version: '4.0.7'
+          bundler-cache: true
+      - name: Install JavaScript dependencies
+        run: npx --yes yarn@1.22.22 install --frozen-lockfile --non-interactive
+      - name: Build device IPA
+        run: bash scripts/build-ios.sh
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: PocketPal16
+          path: build/PocketPal16.ipa
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v7.0.2
+        if: always()
+        with:
+          name: ios-build-log
+          path: build/ios-build.log
+          if-no-files-found: ignore

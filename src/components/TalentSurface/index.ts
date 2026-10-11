@@ -1,1 +1,0 @@
-export {TalentSurface} from './TalentSurface';

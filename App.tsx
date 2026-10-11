@@ -1,307 +1,529 @@
-import * as React from 'react';
-import {Appearance, Dimensions, StyleSheet, View} from 'react-native';
-
-import {observer} from 'mobx-react';
-import {isHydrated} from 'mobx-persist-store';
-import {NavigationContainer} from '@react-navigation/native';
-import {Provider as PaperProvider} from 'react-native-paper';
-import {BottomSheetModalProvider} from '@gorhom/bottom-sheet';
-import {createDrawerNavigator} from '@react-navigation/drawer';
-import {SafeAreaProvider} from 'react-native-safe-area-context';
-import {KeyboardProvider} from 'react-native-keyboard-controller';
+import React, {useEffect, useReducer, useRef, useState} from 'react';
 import {
-  gestureHandlerRootHOC,
-  GestureHandlerRootView,
-} from 'react-native-gesture-handler';
-
-import {purchaseStore, ttsStore, uiStore} from './src/store';
-import {useTheme} from './src/hooks';
-import {useDeepLinking} from './src/hooks/useDeepLinking';
-import {Theme} from './src/utils/types';
-
-import {l10n, initLocale} from './src/locales';
-import {L10nContext} from './src/utils';
-import {ROUTES} from './src/utils/navigationConstants';
-
+  Alert,
+  Appearance,
+  NativeModules,
+  StatusBar,
+  useColorScheme,
+  AppState,
+  Button,
+  FlatList,
+  KeyboardAvoidingView,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import {SafeAreaProvider, SafeAreaView} from 'react-native-safe-area-context';
 import {
-  SidebarContent,
-  ModelsHeaderRight,
-  PalHeaderRight,
-  HeaderLeft,
-  AppWithMigration,
-  TTSSetupSheet,
-  DownloadOverlay,
-  HubRunSheetHost,
-} from './src/components';
-import {MarkdownProvider} from './src/components/MarkdownView';
-import {
-  AutomationBridge,
-  BenchmarkRunnerScreen,
-  fakeStore,
-} from './src/__automation__';
-import {
-  ChatScreen,
-  ModelsScreen,
-  SettingsScreen,
-  BenchmarkScreen,
-  AboutScreen,
+  errorCodes,
+  isErrorWithCode,
+  pick,
+} from '@react-native-documents/picker';
+import {controller as chat, modelDirectory} from './src/controller';
+import {Settings} from './src/chat';
+import {Palette, palettes, resolveTheme} from './src/theme';
 
-  // Dev tools screen. Only available in debug mode.
-  DevToolsScreen,
-} from './src/screens';
-import PalsScreen from './src/screens/PalsScreen';
-import {OnboardingStack} from './src/screens/OnboardingScreens';
-
-// Check if app is in debug mode
-const isDebugMode = __DEV__;
-
-if (__E2E__) {
-  fakeStore.restore();
-}
-
-const Drawer = createDrawerNavigator();
-
-const screenWidth = Dimensions.get('window').width;
-
-// Component that handles deep linking - must be inside NavigationContainer
-const DeepLinkHandler = () => {
-  useDeepLinking();
-  return null;
+type Page = 'Chat' | 'Models' | 'History' | 'Settings';
+const attempt = (work: () => Promise<unknown>) => {
+  work().catch(chat.report);
 };
 
-// Branches between the OnboardingStack (first-launch flow) and the main
-// Drawer.Navigator. Both children mount under the same provider tree —
-// switching does NOT remount providers above this point.
-//
-// The hydration check is belt-and-suspenders. AppWithMigrationWrapper
-// already gates render on `isHydrated(uiStore)`, but reading the same
-// observable here keeps the contract local and survives refactors of the
-// outer gate.
-type SwitchPointProps = {drawer: React.ReactNode};
-const SwitchPoint: React.FC<SwitchPointProps> = observer(({drawer}) => {
-  if (!isHydrated(uiStore)) {
-    return null;
-  }
-  if (!uiStore.hasCompletedOnboarding) {
-    return <OnboardingStack />;
-  }
-  return <>{drawer}</>;
-});
-
-const App = observer(() => {
-  const theme = useTheme();
-  const styles = createStyles(theme);
-  const currentL10n = l10n[uiStore.language];
-
-  // Initialize locale with the current language
-  React.useEffect(() => {
-    initLocale(uiStore.language);
-  }, []);
-
-  // Initialize TTS store (memory gate + AppState/session listeners).
-  // Fire-and-forget: `init()` is idempotent and swallows its own errors.
-  React.useEffect(() => {
-    ttsStore.init().catch(() => {
-      // init() swallows its own errors; catch to satisfy no-floating-promises.
-    });
-  }, []);
-
-  React.useEffect(() => {
-    purchaseStore
-      .start(__E2E__ ? {store: fakeStore, beforeInit: fakeStore.restore} : {})
-      .catch(error => console.warn('Purchase recovery failed:', error));
-  }, []);
-
+function SettingsForm({
+  styles,
+  colors,
+  scheme,
+}: {
+  styles: ReturnType<typeof createStyles>;
+  colors: Palette;
+  scheme: 'light' | 'dark';
+}) {
+  const [draft, setDraft] = useState(chat.settings);
+  const [numbers, setNumbers] = useState({
+    context: String(draft.context),
+    maxTokens: String(draft.maxTokens),
+    temperature: String(draft.temperature),
+    topP: String(draft.topP),
+  });
+  const fields = [
+    ['context', 'Context tokens (reloads model)'],
+    ['maxTokens', 'Maximum output tokens'],
+    ['temperature', 'Temperature'],
+    ['topP', 'Top P'],
+  ] as const;
   return (
-    <GestureHandlerRootView style={styles.root}>
-      {__E2E__ ? <AutomationBridge /> : null}
-      <SafeAreaProvider>
-        <KeyboardProvider statusBarTranslucent navigationBarTranslucent>
-          <PaperProvider theme={theme}>
-            <L10nContext.Provider value={currentL10n}>
-              <MarkdownProvider>
-                <NavigationContainer>
-                  <DeepLinkHandler />
-                  <BottomSheetModalProvider>
-                    <SwitchPoint
-                      drawer={
-                        <Drawer.Navigator
-                          screenOptions={{
-                            headerLeft: () => <HeaderLeft />,
-                            drawerStyle: {
-                              width:
-                                screenWidth > 400 ? 320 : screenWidth * 0.8,
-                            },
-                            headerStyle: {
-                              backgroundColor: theme.colors.background,
-                            },
-                            headerTintColor: theme.colors.onBackground,
-                            headerTitleStyle: styles.headerTitle,
-                          }}
-                          drawerContent={props => (
-                            <SidebarContent {...props} />
-                          )}>
-                          <Drawer.Screen
-                            name={ROUTES.CHAT}
-                            component={gestureHandlerRootHOC(ChatScreen)}
-                            options={{
-                              headerShown: false,
-                            }}
-                          />
-                          <Drawer.Screen
-                            name={ROUTES.PALS}
-                            component={gestureHandlerRootHOC(PalsScreen)}
-                            options={{
-                              headerRight: () => <PalHeaderRight />,
-                              headerStyle: styles.headerWithoutDivider,
-                              title: currentL10n.screenTitles.pals,
-                            }}
-                          />
-                          <Drawer.Screen
-                            name={ROUTES.MODELS}
-                            component={gestureHandlerRootHOC(ModelsScreen)}
-                            options={{
-                              headerRight: () => <ModelsHeaderRight />,
-                              headerStyle: styles.headerWithoutDivider,
-                              title: currentL10n.screenTitles.models,
-                            }}
-                          />
-                          <Drawer.Screen
-                            name={ROUTES.BENCHMARK}
-                            component={gestureHandlerRootHOC(BenchmarkScreen)}
-                            options={{
-                              headerStyle: styles.headerWithoutDivider,
-                              title: currentL10n.screenTitles.benchmark,
-                            }}
-                          />
-                          <Drawer.Screen
-                            name={ROUTES.SETTINGS}
-                            component={gestureHandlerRootHOC(SettingsScreen)}
-                            options={{
-                              headerStyle: styles.headerWithoutDivider,
-                              title: currentL10n.screenTitles.settings,
-                            }}
-                          />
-                          <Drawer.Screen
-                            name={ROUTES.APP_INFO}
-                            component={gestureHandlerRootHOC(AboutScreen)}
-                            options={{
-                              headerStyle: styles.headerWithoutDivider,
-                              title: currentL10n.screenTitles.appInfo,
-                            }}
-                          />
-
-                          {/* Only show Dev Tools screen in debug mode */}
-                          {isDebugMode && (
-                            <Drawer.Screen
-                              name={ROUTES.DEV_TOOLS}
-                              component={gestureHandlerRootHOC(DevToolsScreen)}
-                              options={{
-                                headerStyle: styles.headerWithoutDivider,
-                                title: 'Dev Tools',
-                              }}
-                            />
-                          )}
-
-                          {/*
-                      E2E-only deep-link-driven benchmark matrix runner.
-                      Hidden from the drawer sidebar via
-                      drawerItemStyle:{display:'none'}; reachable only by
-                      the deep link pocketpal://e2e/benchmark in the e2e
-                      flavor build (see useDeepLinking cold-launch effect
-                      and android/app/src/e2e/AndroidManifest.xml).
-                    */}
-                          {__E2E__ && (
-                            <Drawer.Screen
-                              name={ROUTES.BENCHMARK_RUNNER}
-                              component={gestureHandlerRootHOC(
-                                BenchmarkRunnerScreen,
-                              )}
-                              options={{
-                                headerStyle: styles.headerWithoutDivider,
-                                title: 'Benchmark Runner',
-                                drawerItemStyle: {display: 'none'},
-                              }}
-                            />
-                          )}
-                        </Drawer.Navigator>
-                      }
-                    />
-                    <TTSSetupSheet />
-                    <DownloadOverlay />
-                    <HubRunSheetHost />
-                  </BottomSheetModalProvider>
-                </NavigationContainer>
-              </MarkdownProvider>
-            </L10nContext.Provider>
-          </PaperProvider>
-        </KeyboardProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+    <ScrollView
+      indicatorStyle={scheme === 'dark' ? 'white' : 'black'}
+      contentContainerStyle={styles.content}
+      keyboardShouldPersistTaps="handled">
+      <Text style={styles.label}>Appearance</Text>
+      <View style={styles.row}>
+        {(['system', 'light', 'dark'] as const).map(theme => (
+          <Button
+            key={theme}
+            title={theme[0].toUpperCase() + theme.slice(1)}
+            color={colors.accent}
+            disabled={draft.theme === theme}
+            onPress={() => setDraft({...draft, theme})}
+          />
+        ))}
+      </View>
+      {fields.map(([key, label]) => (
+        <View key={key}>
+          <Text style={styles.label}>{label}</Text>
+          <TextInput
+            keyboardAppearance={scheme}
+            placeholderTextColor={colors.placeholder}
+            selectionColor={colors.accent}
+            accessibilityLabel={label}
+            style={styles.input}
+            keyboardType="decimal-pad"
+            value={numbers[key]}
+            onChangeText={value => setNumbers({...numbers, [key]: value})}
+          />
+        </View>
+      ))}
+      <View style={styles.row}>
+        <Text style={styles.label}>
+          Try Metal GPU; CPU if unsupported (reloads model)
+        </Text>
+        <Switch
+          value={draft.gpu}
+          onValueChange={gpu => setDraft({...draft, gpu})}
+          disabled={chat.busy}
+        />
+      </View>
+      <Text style={styles.label}>System prompt</Text>
+      <TextInput
+        keyboardAppearance={scheme}
+        placeholderTextColor={colors.placeholder}
+        selectionColor={colors.accent}
+        accessibilityLabel="System prompt"
+        style={styles.input}
+        multiline
+        value={draft.systemPrompt}
+        onChangeText={systemPrompt => setDraft({...draft, systemPrompt})}
+      />
+      <Button
+        color={colors.accent}
+        title="Save settings"
+        disabled={chat.busy}
+        onPress={() =>
+          attempt(async () => {
+            const next: Settings = {
+              ...draft,
+              context: Number(numbers.context),
+              maxTokens: Number(numbers.maxTokens),
+              temperature: Number(numbers.temperature),
+              topP: Number(numbers.topP),
+            };
+            await chat.updateSettings(next);
+            Alert.alert('Settings saved');
+          })
+        }
+      />
+    </ScrollView>
   );
-});
+}
 
-const createStyles = (theme: Theme) =>
+function Main() {
+  const systemScheme = useColorScheme();
+  const appearanceMode = chat.settings.theme;
+  const scheme = resolveTheme(appearanceMode, systemScheme);
+  const colors = palettes[scheme];
+  const styles = themedStyles[scheme];
+  useEffect(() => {
+    Appearance.setColorScheme(
+      appearanceMode === 'system' ? 'unspecified' : appearanceMode,
+    );
+  }, [scheme, appearanceMode]);
+  const [revision, redraw] = useReducer(value => value + 1, 0);
+  const [page, setPage] = useState<Page>('Chat');
+  const [input, setInput] = useState('');
+  const [picking, setPicking] = useState(false);
+  const activeId = chat.activeId;
+  const list = useRef<FlatList>(null);
+  const followOutput = useRef(true);
+  useEffect(() => {
+    followOutput.current = true;
+    list.current?.scrollToEnd({animated: false});
+  }, [activeId, page]);
+  useEffect(() => {
+    const unsubscribe = chat.subscribe(redraw);
+    attempt(() => chat.initialize());
+    const state = AppState.addEventListener('change', next => {
+      if (next === 'background') {
+        attempt(() => chat.background());
+      } else if (next === 'active') {
+        chat.foreground();
+      }
+    });
+    const memory = AppState.addEventListener('memoryWarning', () => {
+      if (!chat.busy) {
+        attempt(() => chat.unload());
+      }
+    });
+    return () => {
+      unsubscribe();
+      state.remove();
+      memory.remove();
+    };
+  }, []);
+  const importFile = async () => {
+    setPicking(true);
+    try {
+      const [file] = await pick({type: 'public.data', mode: 'import'});
+      if (file) {
+        await chat.importModel(file.uri, file.name ?? 'model.gguf');
+      }
+    } catch (error) {
+      if (
+        !isErrorWithCode(error) ||
+        error.code !== errorCodes.OPERATION_CANCELED
+      ) {
+        throw error;
+      }
+    } finally {
+      setPicking(false);
+    }
+  };
+  if (!chat.ready) {
+    return (
+      <SafeAreaView style={styles.root}>
+        <StatusBar
+          barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'}
+        />
+        <Text style={styles.status}>
+          {chat.error || 'Loading saved chats…'}
+        </Text>
+        {!!chat.error && (
+          <Button
+            color={colors.accent}
+            title="Retry loading"
+            onPress={() => attempt(() => chat.initialize())}
+          />
+        )}
+      </SafeAreaView>
+    );
+  }
+  return (
+    <SafeAreaView style={styles.root}>
+      <StatusBar
+        barStyle={scheme === 'dark' ? 'light-content' : 'dark-content'}
+      />
+      <Text style={styles.title}>PocketPal 16</Text>
+      <View style={styles.tabs}>
+        {(['Chat', 'Models', 'History', 'Settings'] as Page[]).map(name => (
+          <Button
+            color={colors.accent}
+            key={name}
+            title={name}
+            disabled={page === name}
+            onPress={() => setPage(name)}
+          />
+        ))}
+      </View>
+      <Text numberOfLines={2} style={styles.status}>
+        {chat.loadedPath
+          ? `${chat.loadedPath.split('/').pop()} · ${chat.backend}`
+          : 'No model loaded'}
+        {chat.busy ? ' · Working…' : ''}
+      </Text>
+      {!!chat.error && (
+        <Text
+          selectable
+          style={styles.error}
+          onPress={() => {
+            chat.error = '';
+            chat.notify();
+          }}>
+          {chat.error}
+        </Text>
+      )}
+      {page === 'Chat' && (
+        <KeyboardAvoidingView style={styles.flex} behavior="padding">
+          <View style={styles.row}>
+            <Text numberOfLines={1} style={styles.chatTitle}>
+              {chat.active?.title ?? 'Chat'}
+            </Text>
+            <Button
+              color={colors.accent}
+              title="New chat"
+              disabled={chat.busy}
+              onPress={() => {
+                chat.newChat();
+                setInput('');
+              }}
+            />
+          </View>
+          <FlatList
+            indicatorStyle={scheme === 'dark' ? 'white' : 'black'}
+            ref={list}
+            style={styles.flex}
+            data={chat.active?.messages.slice() ?? []}
+            keyExtractor={(_, index) => String(index)}
+            extraData={revision}
+            scrollEventThrottle={100}
+            onScroll={({
+              nativeEvent: {contentOffset, contentSize, layoutMeasurement},
+            }) => {
+              followOutput.current =
+                contentSize.height -
+                  contentOffset.y -
+                  layoutMeasurement.height <
+                80;
+            }}
+            onContentSizeChange={() => {
+              if (followOutput.current) {
+                list.current?.scrollToEnd({animated: false});
+              }
+            }}
+            renderItem={({item}) => (
+              <View
+                style={item.role === 'user' ? styles.user : styles.assistant}>
+                <Text style={styles.label}>
+                  {item.role === 'user' ? 'You' : 'Assistant'}
+                </Text>
+                <Text selectable style={styles.message}>
+                  {item.content || '…'}
+                </Text>
+                {!!item.content && (
+                  <Button
+                    color={colors.accent}
+                    title="Copy"
+                    onPress={() =>
+                      NativeModules.RuntimeModule.copyText(item.content)
+                    }
+                  />
+                )}
+              </View>
+            )}
+          />
+          <Button
+            color={colors.accent}
+            title="Retry last response"
+            disabled={
+              chat.busy || !chat.loadedPath || !chat.active?.messages.length
+            }
+            onPress={() => attempt(() => chat.retry())}
+          />
+          <View style={styles.composer}>
+            <TextInput
+              keyboardAppearance={scheme}
+              placeholderTextColor={colors.placeholder}
+              selectionColor={colors.accent}
+              accessibilityLabel="Message"
+              style={[styles.input, styles.messageInput]}
+              multiline
+              placeholder="Message"
+              value={input}
+              onChangeText={setInput}
+              editable={!chat.busy}
+            />
+            {chat.generating ? (
+              <Button
+                color={colors.accent}
+                title="Stop"
+                onPress={() => attempt(() => chat.stop())}
+              />
+            ) : (
+              <Button
+                color={colors.accent}
+                title="Send"
+                disabled={chat.busy || !chat.loadedPath || !input.trim()}
+                onPress={() => {
+                  const text = input;
+                  attempt(async () => {
+                    if (await chat.send(text)) {
+                      setInput('');
+                    }
+                  });
+                }}
+              />
+            )}
+          </View>
+        </KeyboardAvoidingView>
+      )}
+      {page === 'Models' && (
+        <ScrollView
+          indicatorStyle={scheme === 'dark' ? 'white' : 'black'}
+          contentContainerStyle={styles.content}>
+          <View style={styles.row}>
+            <Button
+              color={colors.accent}
+              title={picking ? 'Importing…' : 'Import GGUF'}
+              disabled={chat.busy || picking}
+              onPress={() => attempt(importFile)}
+            />
+            <Button
+              color={colors.accent}
+              title="Refresh"
+              disabled={chat.busy}
+              onPress={() => attempt(() => chat.refreshModels())}
+            />
+            <Button
+              color={colors.accent}
+              title="Unload"
+              disabled={chat.busy || !chat.loadedPath}
+              onPress={() => attempt(() => chat.unload())}
+            />
+          </View>
+          <Text style={styles.label}>
+            SSH: copy GGUF files into this folder, then tap Refresh.
+          </Text>
+          <Text selectable style={styles.path}>
+            {modelDirectory}
+          </Text>
+          <Button
+            color={colors.accent}
+            title="Copy folder path"
+            onPress={() => NativeModules.RuntimeModule.copyText(modelDirectory)}
+          />
+          {!chat.models.length && (
+            <Text style={styles.label}>No GGUF files imported yet.</Text>
+          )}
+          {chat.models.map(model => (
+            <View key={model.path} style={styles.card}>
+              <Text style={styles.message}>{model.name}</Text>
+              <Text style={styles.status}>
+                {(model.size / 1024 ** 2).toFixed(0)} MiB
+              </Text>
+              <Button
+                color={colors.accent}
+                title={chat.loadedPath === model.path ? 'Loaded' : 'Load'}
+                disabled={
+                  chat.busy || picking || chat.loadedPath === model.path
+                }
+                onPress={() => attempt(() => chat.loadModel(model.path))}
+              />
+            </View>
+          ))}
+        </ScrollView>
+      )}
+      {page === 'History' && (
+        <FlatList
+          indicatorStyle={scheme === 'dark' ? 'white' : 'black'}
+          data={chat.sessions.slice()}
+          keyExtractor={item => item.id}
+          renderItem={({item}) => (
+            <View style={styles.card}>
+              <Text style={styles.message}>{item.title}</Text>
+              <Text numberOfLines={1} style={styles.status}>
+                {item.model.split('/').pop() || 'Empty chat'}
+              </Text>
+              <View style={styles.row}>
+                <Button
+                  color={colors.accent}
+                  title="Open"
+                  disabled={chat.busy}
+                  onPress={() => {
+                    chat.selectChat(item.id);
+                    setInput('');
+                    setPage('Chat');
+                  }}
+                />
+                <Button
+                  color={colors.accent}
+                  title="Delete"
+                  disabled={chat.busy}
+                  onPress={() => attempt(() => chat.deleteChat(item.id))}
+                />
+              </View>
+            </View>
+          )}
+        />
+      )}
+      {page === 'Settings' && (
+        <SettingsForm styles={styles} colors={colors} scheme={scheme} />
+      )}
+    </SafeAreaView>
+  );
+}
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <Main />
+    </SafeAreaProvider>
+  );
+}
+const createStyles = (colors: Palette) =>
   StyleSheet.create({
-    root: {
+    root: {flex: 1, backgroundColor: colors.background},
+    flex: {flex: 1},
+    title: {
+      fontSize: 22,
+      fontWeight: '600',
+      paddingHorizontal: 12,
+      paddingTop: 8,
+      color: colors.text,
+    },
+    tabs: {flexDirection: 'row', justifyContent: 'space-around'},
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    status: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      color: colors.secondary,
+    },
+    error: {
+      padding: 12,
+      color: colors.error,
+      backgroundColor: colors.errorBackground,
+    },
+    content: {padding: 12, gap: 12},
+    label: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colors.text,
+      marginBottom: 4,
+    },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 6,
+      padding: 10,
+      fontSize: 16,
+      color: colors.text,
+    },
+    messageInput: {flex: 1, maxHeight: 120},
+    composer: {flexDirection: 'row', alignItems: 'center', padding: 8, gap: 8},
+    chatTitle: {
+      color: colors.text,
       flex: 1,
+      paddingLeft: 12,
+      fontWeight: '600',
     },
-    headerWithoutDivider: {
-      elevation: 0,
-      shadowOpacity: 0,
-      borderBottomWidth: 0,
-      backgroundColor: theme.colors.background,
+    user: {
+      margin: 8,
+      marginLeft: 32,
+      padding: 12,
+      backgroundColor: colors.user,
+      borderRadius: 8,
     },
-    headerWithDivider: {
-      backgroundColor: theme.colors.background,
+    assistant: {
+      margin: 8,
+      marginRight: 24,
+      padding: 12,
+      backgroundColor: colors.assistant,
+      borderRadius: 8,
     },
-    headerTitle: {
-      ...theme.fonts.titleSmall,
+    message: {fontSize: 16, lineHeight: 23, color: colors.text},
+    card: {
+      margin: 8,
+      padding: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
     },
+    path: {fontSize: 12, color: colors.secondary},
   });
 
-// Neutral background-only hold, rendered until mobx-persist-store has
-// loaded UIStore from AsyncStorage. It is a single full-screen View whose
-// only meaningful property is backgroundColor, resolved from the system
-// color scheme. Deliberately carries NO branding, NO Text, NO
-// SafeAreaProvider, NO insets, and NO spinner: a flat colored View has
-// nothing to match against either native launch surface (iOS has a branded
-// storyboard, Android has no native launch screen), so it cannot diverge
-// from native on any axis and reads simply as "app launching".
-const splashStyles = StyleSheet.create({
-  light: {flex: 1, backgroundColor: '#ffffff'},
-  dark: {flex: 1, backgroundColor: '#000000'},
-});
-
-const HydrationHold = () => (
-  <View
-    testID="hydration-splash"
-    style={
-      Appearance.getColorScheme() === 'dark'
-        ? splashStyles.dark
-        : splashStyles.light
-    }
-  />
-);
-
-// Wrap the App component with AppWithMigration to show migration UI when
-// needed. Gates the first render of any theme-consuming subtree on
-// mobx-persist-store hydration so persisted `language` and `colorScheme`
-// are observed on first paint.
-//
-// The gate must wrap App itself (App calls useTheme() BEFORE <PaperProvider>
-// mounts), so AppWithMigrationWrapper — which sits above App and has no
-// theme dependency — is the chosen host. While unhydrated it renders the
-// neutral background-only hold above.
-const AppWithMigrationWrapper = observer(() => {
-  if (!isHydrated(uiStore)) {
-    return <HydrationHold />;
-  }
-  return (
-    <AppWithMigration>
-      <App />
-    </AppWithMigration>
-  );
-});
-
-export default AppWithMigrationWrapper;
+const themedStyles = {
+  light: createStyles(palettes.light),
+  dark: createStyles(palettes.dark),
+};
