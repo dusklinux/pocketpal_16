@@ -32,6 +32,19 @@ index ffabac4..dc0937b 100644
          return result;
      }
  
+diff --git a/cpp/rn-common.hpp b/cpp/rn-common.hpp
+index cecc208..b6607da 100644
+--- a/cpp/rn-common.hpp
++++ b/cpp/rn-common.hpp
+@@ -81,7 +81,7 @@ inline static json backend_devices_info() {
+                 if (metal_props) {
+                     // Add Metal-specific metadata
+                     json metadata;
+-                    metadata["supportsMTLGPUFamilyApple7"] = metal_props->supports_gpu_family_apple7;
++                    metadata["supportsMTLGPUFamilyApple7"] = metal_props->gpu_family >= 7;
+                     metadata["hasBFloat16"] = metal_props->has_bfloat;
+                     metadata["hasSimdgroupReduction"] = metal_props->has_simdgroup_reduction;
+                     metadata["hasSimdgroupMM"] = metal_props->has_simdgroup_mm;
 diff --git a/cpp/rn-completion.cpp b/cpp/rn-completion.cpp
 index 15e26d4..8478546 100644
 --- a/cpp/rn-completion.cpp
