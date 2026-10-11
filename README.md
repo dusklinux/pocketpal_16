@@ -23,6 +23,24 @@ A **manual-only** GitHub Actions workflow, `.github/workflows/build-ios16.yml`, 
 
 The previous CocoaPods lockfile was removed because it described the discarded app. The first macOS build resolves the reduced Podfile; retain and review its new `ios/Podfile.lock` after a successful build. The JavaScript dependency lockfile has been regenerated and is checked during installation.
 
+## Fast updates to JavaScript and settings
+
+For UI or JavaScript-only changes, use a working IPA built with the same React Native version, native code, native dependencies, engine patch, and build settings as this checkout. Native changes still require the full Xcode/GitHub Actions build. Install the locked JavaScript dependencies first. The helper requires Python 3.15+, Node, and SSH/SCP for optional installation; it runs on Linux or macOS.
+
+```sh
+npm run update:ipa -- --base-ipa /path/to/working.ipa
+```
+
+This runs lint, type checking, and tests, creates a release bundle, compiles it with the checkout's Hermes compiler, checks the bytecode version against the base IPA, and writes `build/PocketPal16-js.ipa`. It preserves the base IPA and all archive members except `main.jsbundle`. Changes that emit bundled assets require the full build. Matching bytecode versions do not prove compatibility with changed native dependencies; keep the native base unchanged.
+
+To install the result through TrollStore Lite over SSH:
+
+```sh
+npm run update:ipa -- --base-ipa /path/to/working.ipa --install-host root@127.0.0.1 --ssh-port 2222
+```
+
+Use your actual SSH host and port. SSH handles authentication normally; no password is stored in the script. The helper discovers the rootful/rootless TrollStore Lite executable, uploads to a temporary device file, invokes its installer, and cleans up the upload and connection. TrollStore Lite re-signs the updated app; this repacked IPA requires that installation route. Existing conversations, model files, and settings remain in the app's data container. Reopen the app and load your model after installation.
+
 ## Installation
 
 Open the resulting IPA with TrollStore Lite on your jailbroken device. The inspected device runs iOS 16.7.16 and has TrollStore Lite 2.1.1 installed. This is a jailbreak-dependent installation route: standard TrollStore does not support released iOS 16.7.x. Do not assume this app stays launchable after booting without the jailbreak. See [TrollStore Lite](https://havoc.app/package/trollstorelite) and [TrollStore support](https://github.com/opa334/TrollStore).

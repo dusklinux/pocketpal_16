@@ -9,7 +9,8 @@
     "lint": "eslint App.tsx index.js src tests *.js scripts/*.cjs",
     "typecheck": "tsc --noEmit",
     "test": "jest --runInBand",
-    "postinstall": "node scripts/prepare-backend.cjs"
+    "postinstall": "node scripts/prepare-backend.cjs",
+    "update:ipa": "python3 scripts/update-js-ipa.py"
   },
   "dependencies": {
     "@dr.pogodin/react-native-fs": "2.40.3",
