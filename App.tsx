@@ -26,6 +26,14 @@ import {
 import {controller as chat, modelDirectory} from './src/controller';
 import {Settings} from './src/chat';
 import {Palette, palettes, resolveTheme} from './src/theme';
+import {
+  APP_VERSION,
+  checkAllUpdates,
+  CombinedUpdateStatus,
+  installWithTrollStore,
+  PINNED_LLAMA_CPP_SHORT,
+  PINNED_LLAMA_CPP_DATE,
+} from './src/updater';
 
 type Page = 'Chat' | 'Models' | 'History' | 'Settings';
 const attempt = (work: () => Promise<unknown>) => {
@@ -77,6 +85,24 @@ function SettingsForm({
     temperature: String(draft.temperature),
     topP: String(draft.topP),
   });
+  const [updateState, setUpdateState] = useState<{
+    checking: boolean;
+    data: CombinedUpdateStatus | null;
+  }>({checking: false, data: null});
+  const [directIpaUrl, setDirectIpaUrl] = useState('');
+
+  useEffect(() => {
+    setDraft(current => ({...current, theme: chat.settings.theme}));
+  }, []);
+
+  const checkUpdates = () => {
+    setUpdateState({checking: true, data: null});
+    attempt(async () => {
+      const data = await checkAllUpdates(APP_VERSION);
+      setUpdateState({checking: false, data});
+    });
+  };
+
   const fields = [
     ['context', 'Context tokens (reloads model)'],
     ['maxTokens', 'Maximum output tokens'],
@@ -90,15 +116,22 @@ function SettingsForm({
       keyboardShouldPersistTaps="handled">
       <Text style={styles.label}>Appearance</Text>
       <View style={styles.row}>
-        {(['system', 'light', 'dark'] as const).map(theme => (
-          <Button
-            key={theme}
-            title={theme[0].toUpperCase() + theme.slice(1)}
-            color={colors.accent}
-            disabled={draft.theme === theme}
-            onPress={() => setDraft({...draft, theme})}
-          />
-        ))}
+        {(['system', 'light', 'dark'] as const).map(theme => {
+          const active = chat.settings.theme === theme;
+          return (
+            <Button
+              key={theme}
+              title={
+                (active ? '✓ ' : '') + theme[0].toUpperCase() + theme.slice(1)
+              }
+              color={active ? colors.text : colors.accent}
+              onPress={() => {
+                setDraft(curr => ({...curr, theme}));
+                attempt(() => chat.updateSettings({...chat.settings, theme}));
+              }}
+            />
+          );
+        })}
       </View>
       {fields.map(([key, label]) => (
         <View key={key}>
@@ -154,22 +187,111 @@ function SettingsForm({
           })
         }
       />
+      <Text style={[styles.label, {marginTop: 16}]}>
+        Updates & Engine Status
+      </Text>
+      <View style={styles.card}>
+        <Text style={styles.message}>
+          llama.cpp {PINNED_LLAMA_CPP_SHORT} ({PINNED_LLAMA_CPP_DATE})
+        </Text>
+        <Text style={styles.status}>
+          {updateState.checking
+            ? 'Querying GitHub API…'
+            : updateState.data?.engine
+              ? `${updateState.data.engine.commitsAhead} commits behind master (latest: ${updateState.data.engine.latestCommit} on ${updateState.data.engine.latestDate})`
+              : updateState.data?.engineError
+                ? updateState.data.engineError
+                : 'Tap Check to cross-reference upstream llama.cpp commits'}
+        </Text>
+        {updateState.data?.engine?.latestMessage ? (
+          <Text numberOfLines={2} style={styles.path}>
+            Latest: {updateState.data.engine.latestMessage}
+          </Text>
+        ) : null}
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.message}>PocketPal 16 v{APP_VERSION}</Text>
+        <Text style={styles.status}>
+          {updateState.checking
+            ? 'Checking GitHub for releases…'
+            : updateState.data?.app
+              ? updateState.data.app.hasUpdate
+                ? `Update available: v${updateState.data.app.latestVersion}`
+                : `Up to date (latest: v${updateState.data.app.latestVersion})`
+              : updateState.data?.appError
+                ? updateState.data.appError
+                : 'Check GitHub releases for IPA builds'}
+        </Text>
+        {updateState.data?.app?.releaseNotes ? (
+          <Text numberOfLines={3} style={styles.path}>
+            {updateState.data.app.releaseNotes}
+          </Text>
+        ) : null}
+        <View style={styles.row}>
+          <Button
+            color={colors.accent}
+            title={updateState.checking ? 'Checking…' : 'Check for updates'}
+            disabled={updateState.checking || chat.busy}
+            onPress={checkUpdates}
+          />
+          {updateState.data?.app?.downloadUrl ? (
+            <Button
+              color={colors.accent}
+              title={
+                updateState.data.app.hasUpdate
+                  ? 'Update (TrollStore)'
+                  : 'Reinstall (TrollStore)'
+              }
+              onPress={() =>
+                attempt(() =>
+                  installWithTrollStore(updateState.data!.app!.downloadUrl),
+                )
+              }
+            />
+          ) : null}
+        </View>
+      </View>
+      <View style={styles.card}>
+        <Text style={styles.label}>Direct IPA URL (TrollStore)</Text>
+        <TextInput
+          keyboardAppearance={scheme}
+          placeholderTextColor={colors.placeholder}
+          selectionColor={colors.accent}
+          accessibilityLabel="Direct IPA URL"
+          style={styles.input}
+          placeholder="https://.../PocketPal16.ipa"
+          value={directIpaUrl}
+          onChangeText={setDirectIpaUrl}
+          autoCapitalize="none"
+          autoCorrect={false}
+        />
+        <Button
+          color={colors.accent}
+          title="Install via TrollStore"
+          disabled={!directIpaUrl.trim()}
+          onPress={() => attempt(() => installWithTrollStore(directIpaUrl))}
+        />
+      </View>
     </ScrollView>
   );
 }
 
 function Main() {
+  const [revision, redraw] = useReducer(value => value + 1, 0);
   const systemScheme = useColorScheme();
   const appearanceMode = chat.settings.theme;
   const scheme = resolveTheme(appearanceMode, systemScheme);
   const colors = palettes[scheme];
   const styles = themedStyles[scheme];
   useEffect(() => {
-    Appearance.setColorScheme(
-      appearanceMode === 'system' ? 'unspecified' : appearanceMode,
-    );
-  }, [scheme, appearanceMode]);
-  const [revision, redraw] = useReducer(value => value + 1, 0);
+    try {
+      Appearance.setColorScheme(
+        appearanceMode === 'system' ? 'unspecified' : appearanceMode,
+      );
+    } catch {
+      // Ignore in unsupported environments
+    }
+  }, [appearanceMode]);
   const [page, setPage] = useState<Page>('Chat');
   const [fullScreen, setFullScreen] = useState(false);
   const focusedChat = fullScreen && page === 'Chat';
@@ -293,6 +415,7 @@ function Main() {
                 onPress={() => {
                   chat.newChat();
                   setInput('');
+                  setFullScreen(false);
                 }}
               />
               <Button
@@ -381,6 +504,10 @@ function Main() {
                 disabled={chat.busy || !chat.loadedPath || !input.trim()}
                 onPress={() => {
                   const text = input;
+                  const isFirst = (chat.active?.messages.length ?? 0) === 0;
+                  if (isFirst) {
+                    setFullScreen(true);
+                  }
                   attempt(async () => {
                     if (await chat.send(text)) {
                       setInput('');
@@ -467,6 +594,7 @@ function Main() {
                   onPress={() => {
                     chat.selectChat(item.id);
                     setInput('');
+                    setFullScreen(false);
                     setPage('Chat');
                   }}
                 />

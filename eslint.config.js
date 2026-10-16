@@ -26,7 +26,11 @@ module.exports = [
     files: ['**/*.ts', '**/*.tsx'],
     languageOptions: {
       parser,
-      globals: {setTimeout: 'readonly', clearTimeout: 'readonly'},
+      globals: {
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        fetch: 'readonly',
+      },
     },
     plugins: {'@typescript-eslint': typescript, 'react-hooks': hooks},
     rules: {
@@ -43,6 +47,7 @@ module.exports = [
         test: 'readonly',
         expect: 'readonly',
         beforeEach: 'readonly',
+        describe: 'readonly',
       },
     },
     rules: {'@typescript-eslint/no-explicit-any': 'off'},

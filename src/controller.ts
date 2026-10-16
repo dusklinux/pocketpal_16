@@ -322,7 +322,7 @@ export class ChatController {
       await this.persist();
       if (this.stopRequested) {
         session.messages = previous;
-        return;
+        return false;
       }
       session.messages.push(response);
       started = true;

@@ -1,8 +1,17 @@
 name: Build PocketPal 16 IPA
 on:
   workflow_dispatch:
+    inputs:
+      publish_release:
+        description: 'Publish build as a GitHub release'
+        required: false
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v*'
 permissions:
-  contents: read
+  contents: write
 jobs:
   ios:
     runs-on: macos-26
@@ -33,3 +42,15 @@ jobs:
           name: ios-build-log
           path: build/ios-build.log
           if-no-files-found: ignore
+      - name: Publish Release IPA
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="${GITHUB_REF_NAME}"
+          if [[ "${TAG_NAME}" != v* ]]; then
+            TAG_NAME="v$(node -p "require('./package.json').version")"
+          fi
+          gh release view "$TAG_NAME" >/dev/null 2>&1 && \
+            gh release upload "$TAG_NAME" build/PocketPal16.ipa --clobber || \
+            gh release create "$TAG_NAME" build/PocketPal16.ipa --title "PocketPal 16 $TAG_NAME" --notes "Release build of PocketPal 16 IPA for iOS 16 (TrollStore)."
