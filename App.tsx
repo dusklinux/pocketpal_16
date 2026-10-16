@@ -30,6 +30,7 @@ import {
   APP_VERSION,
   checkAllUpdates,
   CombinedUpdateStatus,
+  DEFAULT_REPO,
   installWithTrollStore,
   PINNED_LLAMA_CPP_SHORT,
   PINNED_LLAMA_CPP_DATE,
@@ -91,6 +92,7 @@ function SettingsForm({
     checking: boolean;
     data: CombinedUpdateStatus | null;
   }>({checking: false, data: null});
+  const [updateRepo, setUpdateRepo] = useState(DEFAULT_REPO);
   const [directIpaUrl, setDirectIpaUrl] = useState('');
 
   useEffect(() => {
@@ -100,7 +102,8 @@ function SettingsForm({
   const checkUpdates = () => {
     setUpdateState({checking: true, data: null});
     attempt(async () => {
-      const data = await checkAllUpdates(APP_VERSION);
+      const target = updateRepo.trim() || DEFAULT_REPO;
+      const data = await checkAllUpdates(APP_VERSION, target);
       setUpdateState({checking: false, data});
     });
   };
@@ -189,46 +192,63 @@ function SettingsForm({
           })
         }
       />
-      <Text style={[styles.label, {marginTop: 16}]}>
-        Updates & Engine Status
-      </Text>
+      <Text style={[styles.label, {marginTop: 16}]}>Updates</Text>
       <View style={styles.card}>
-        <Text style={styles.message}>
-          llama.cpp {PINNED_LLAMA_CPP_SHORT} ({PINNED_LLAMA_CPP_DATE})
-        </Text>
-        <Text style={styles.status}>
-          {updateState.checking
-            ? 'Querying GitHub API…'
-            : updateState.data?.engine
-              ? `${updateState.data.engine.commitsAhead} commits behind master (latest: ${updateState.data.engine.latestCommit} on ${updateState.data.engine.latestDate})`
-              : updateState.data?.engineError
-                ? updateState.data.engineError
-                : 'Tap Check to cross-reference upstream llama.cpp commits'}
-        </Text>
-        {updateState.data?.engine?.latestMessage ? (
-          <Text numberOfLines={2} style={styles.path}>
-            Latest: {updateState.data.engine.latestMessage}
+        <View style={styles.row}>
+          <Text style={[styles.message, {fontWeight: '600'}]}>
+            PocketPal 16
           </Text>
-        ) : null}
-      </View>
-      <View style={styles.card}>
-        <Text style={styles.message}>PocketPal 16 v{APP_VERSION}</Text>
-        <Text style={styles.status}>
-          {updateState.checking
-            ? 'Checking GitHub for releases…'
-            : updateState.data?.app
-              ? updateState.data.app.hasUpdate
-                ? `Update available: v${updateState.data.app.latestVersion}`
-                : `Up to date (latest: v${updateState.data.app.latestVersion})`
-              : updateState.data?.appError
-                ? updateState.data.appError
-                : 'Check GitHub releases for IPA builds'}
-        </Text>
-        {updateState.data?.app?.releaseNotes ? (
-          <Text numberOfLines={3} style={styles.path}>
-            {updateState.data.app.releaseNotes}
+          <Text style={styles.path}>v{APP_VERSION}</Text>
+        </View>
+        <View style={[styles.row, {marginTop: 4}]}>
+          <Text style={styles.message}>Engine</Text>
+          <Text style={styles.path}>
+            llama.cpp {PINNED_LLAMA_CPP_SHORT} ({PINNED_LLAMA_CPP_DATE})
           </Text>
-        ) : null}
+        </View>
+
+        <View style={{marginVertical: 8}}>
+          {updateState.checking ? (
+            <Text style={styles.status}>Checking GitHub for updates…</Text>
+          ) : updateState.data ? (
+            <>
+              <Text style={styles.status}>
+                {updateState.data.app?.hasUpdate
+                  ? `Update available: v${updateState.data.app.latestVersion}`
+                  : `App is up to date (v${APP_VERSION})`}
+              </Text>
+              {updateState.data.appError && (
+                <Text style={styles.error}>{updateState.data.appError}</Text>
+              )}
+              {updateState.data.engine ? (
+                <Text style={styles.status}>
+                  Upstream llama.cpp:{' '}
+                  {updateState.data.engine.commitsAhead === 0
+                    ? 'Up to date with master'
+                    : `${updateState.data.engine.commitsAhead} commits ahead (latest: ${updateState.data.engine.latestCommit} on ${updateState.data.engine.latestDate})`}
+                </Text>
+              ) : updateState.data.engineError ? (
+                <Text style={styles.error}>{updateState.data.engineError}</Text>
+              ) : null}
+              {updateState.data.engine?.latestMessage ? (
+                <Text numberOfLines={2} style={styles.path}>
+                  Latest commit: {updateState.data.engine.latestMessage}
+                </Text>
+              ) : null}
+              {updateState.data.app?.releaseNotes ? (
+                <Text numberOfLines={3} style={[styles.path, {marginTop: 4}]}>
+                  Notes: {updateState.data.app.releaseNotes}
+                </Text>
+              ) : null}
+            </>
+          ) : (
+            <Text style={styles.status}>
+              Tap "Check for updates" to query GitHub for new releases and
+              engine status.
+            </Text>
+          )}
+        </View>
+
         <View style={styles.row}>
           <Button
             color={colors.accent}
@@ -251,6 +271,28 @@ function SettingsForm({
               }
             />
           ) : null}
+        </View>
+
+        <View
+          style={{
+            marginTop: 12,
+            borderTopWidth: 1,
+            borderTopColor: colors.border,
+            paddingTop: 8,
+          }}>
+          <Text style={styles.label}>Release Repository</Text>
+          <TextInput
+            keyboardAppearance={scheme}
+            placeholderTextColor={colors.placeholder}
+            selectionColor={colors.accent}
+            accessibilityLabel="Release Repository"
+            style={styles.input}
+            placeholder={DEFAULT_REPO}
+            value={updateRepo}
+            onChangeText={setUpdateRepo}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
         </View>
       </View>
       <View style={styles.card}>

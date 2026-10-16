@@ -7,6 +7,9 @@ on:
         required: false
         type: boolean
         default: true
+  schedule:
+    # Run weekly on Sundays at 00:00 UTC
+    - cron: '0 0 * * 0'
   push:
     tags:
       - 'v*'
@@ -43,7 +46,7 @@ jobs:
           path: build/ios-build.log
           if-no-files-found: ignore
       - name: Publish Release IPA
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true'
+        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true' || github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
