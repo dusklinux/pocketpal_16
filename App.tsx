@@ -25,7 +25,7 @@ import {
 } from '@react-native-documents/picker';
 import {controller as chat, modelDirectory} from './src/controller';
 import {Settings} from './src/chat';
-import {Palette, palettes, resolveTheme} from './src/theme';
+import {Palette, palettes, resolveTheme, ThemeMode} from './src/theme';
 import {
   APP_VERSION,
   checkAllUpdates,
@@ -73,10 +73,12 @@ function SettingsForm({
   styles,
   colors,
   scheme,
+  currentTheme,
 }: {
   styles: ReturnType<typeof createStyles>;
   colors: Palette;
   scheme: 'light' | 'dark';
+  currentTheme: ThemeMode;
 }) {
   const [draft, setDraft] = useState(chat.settings);
   const [numbers, setNumbers] = useState({
@@ -92,8 +94,8 @@ function SettingsForm({
   const [directIpaUrl, setDirectIpaUrl] = useState('');
 
   useEffect(() => {
-    setDraft(current => ({...current, theme: chat.settings.theme}));
-  }, []);
+    setDraft(current => ({...current, theme: currentTheme}));
+  }, [currentTheme]);
 
   const checkUpdates = () => {
     setUpdateState({checking: true, data: null});
@@ -117,7 +119,7 @@ function SettingsForm({
       <Text style={styles.label}>Appearance</Text>
       <View style={styles.row}>
         {(['system', 'light', 'dark'] as const).map(theme => {
-          const active = chat.settings.theme === theme;
+          const active = (currentTheme ?? chat.settings.theme) === theme;
           return (
             <Button
               key={theme}
@@ -610,7 +612,12 @@ function Main() {
         />
       )}
       {page === 'Settings' && (
-        <SettingsForm styles={styles} colors={colors} scheme={scheme} />
+        <SettingsForm
+          styles={styles}
+          colors={colors}
+          scheme={scheme}
+          currentTheme={chat.settings.theme}
+        />
       )}
     </SafeAreaView>
   );
