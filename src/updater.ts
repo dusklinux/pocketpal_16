@@ -25,6 +25,7 @@ export interface LlamaCppStatus {
   commitsAhead: number;
   latestDate: string;
   latestMessage: string;
+  status: string;
 }
 
 export interface CombinedUpdateStatus {
@@ -35,60 +36,80 @@ export interface CombinedUpdateStatus {
 }
 
 export function compareSemver(v1: string, v2: string): number {
-  const parse = (v: string): number[] =>
-    v
-      .replace(/^[^\d]*/, '')
-      .split(/[-+.]/)
-      .map(part => {
-        const num = parseInt(part, 10);
-        return isNaN(num) ? 0 : num;
-      });
-
-  const p1 = parse(v1);
-  const p2 = parse(v2);
-  const len = Math.max(p1.length, p2.length);
-
-  for (let i = 0; i < len; i++) {
-    const n1 = p1[i] ?? 0;
-    const n2 = p2[i] ?? 0;
+  const parse = (v: string) => {
+    const match =
+      /^v?(\d+)\.(\d+)\.(\d+)(?:-([\da-zA-Z.-]+))?(?:\+[\da-zA-Z.-]+)?$/.exec(
+        v,
+      );
+    if (!match) throw new Error(`Invalid release version: ${v}`);
+    return {core: match.slice(1, 4).map(Number), pre: match[4]?.split('.')};
+  };
+  const p1 = parse(v1),
+    p2 = parse(v2);
+  for (let i = 0; i < 3; i++) {
+    const n1 = p1.core[i];
+    const n2 = p2.core[i];
     if (n1 > n2) return 1;
     if (n1 < n2) return -1;
   }
+  if (!p1.pre || !p2.pre) return p1.pre ? -1 : p2.pre ? 1 : 0;
+  for (let i = 0; i < Math.max(p1.pre.length, p2.pre.length); i++) {
+    const a = p1.pre[i],
+      b = p2.pre[i];
+    if (a === b) continue;
+    if (a === undefined) return -1;
+    if (b === undefined) return 1;
+    const na = /^\d+$/.test(a),
+      nb = /^\d+$/.test(b);
+    if (na && nb) return Number(a) > Number(b) ? 1 : -1;
+    if (na !== nb) return na ? -1 : 1;
+    return a > b ? 1 : -1;
+  }
   return 0;
+}
+
+async function githubJson<T>(url: string): Promise<T> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
+  try {
+    const response = await fetch(url, {
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'User-Agent': 'PocketPal16-Updater',
+      },
+    });
+    if (!response.ok)
+      throw new Error(`GitHub request failed (HTTP ${response.status}).`);
+    return await response.json();
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 export async function checkGithubRelease(
   currentVersion: string = APP_VERSION,
   repo: string = DEFAULT_REPO,
 ): Promise<UpdateInfo> {
-  const url = `https://api.github.com/repos/${repo}/releases/latest`;
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'PocketPal16-Updater',
-    },
-  });
-
-  if (response.status === 404) {
-    throw new Error(`No releases published on GitHub repository ${repo} yet.`);
-  }
-  if (!response.ok) {
-    throw new Error(
-      `GitHub API error (${response.status}): ${response.statusText}`,
-    );
-  }
-
-  const data = await response.json();
+  const data = await githubJson<{
+    tag_name?: string;
+    name?: string;
+    body?: string;
+    published_at?: string;
+    html_url?: string;
+    assets?: Array<{name?: string; browser_download_url?: string}>;
+  }>(`https://api.github.com/repos/${repo}/releases/latest`);
   const tagName = String(data.tag_name ?? '');
   const latestVersion = tagName.replace(/^[^\d]*/, '') || tagName;
   const assets: Array<{name?: string; browser_download_url?: string}> =
     Array.isArray(data.assets) ? data.assets : [];
 
-  const ipaAsset = assets.find(asset =>
-    asset.name?.toLowerCase().endsWith('.ipa'),
-  );
+  // Prefer the full native IPA: a JS-only artifact cannot carry a new engine.
+  const ipaAsset = assets.find(asset => asset.name === 'PocketPal16.ipa');
 
   const downloadUrl = ipaAsset?.browser_download_url ?? '';
+  if (!downloadUrl)
+    throw new Error('Release has no PocketPal16.ipa native build.');
   const hasUpdate = Boolean(
     downloadUrl && compareSemver(latestVersion, currentVersion) > 0,
   );
@@ -108,28 +129,14 @@ export async function checkGithubRelease(
 export async function checkLlamaCppStatus(
   pinnedCommit: string = PINNED_LLAMA_CPP_COMMIT,
 ): Promise<LlamaCppStatus> {
-  const url = `https://api.github.com/repos/ggml-org/llama.cpp/compare/${pinnedCommit}...master`;
-  const response = await fetch(url, {
-    headers: {
-      Accept: 'application/vnd.github.v3+json',
-      'User-Agent': 'PocketPal16-Updater',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(
-      `Failed to query llama.cpp upstream: HTTP ${response.status}`,
-    );
-  }
-
-  const data = await response.json();
+  const latest = await githubJson<{
+    sha: string;
+    commit?: {author?: {date?: string}; message?: string};
+  }>('https://api.github.com/repos/ggml-org/llama.cpp/commits/master');
+  const url = `https://api.github.com/repos/ggml-org/llama.cpp/compare/${pinnedCommit}...${latest.sha}?per_page=1`;
+  const data = await githubJson<{ahead_by?: number; status?: string}>(url);
   const aheadBy = Number(data.ahead_by ?? 0);
-  const commits: Array<{
-    sha?: string;
-    commit?: {message?: string; author?: {date?: string}};
-  }> = Array.isArray(data.commits) ? data.commits : [];
-
-  const latest = commits.length > 0 ? commits[commits.length - 1] : undefined;
+  // Resolve master first: compare.commits is paginated and may omit the head.
   const latestCommit = latest?.sha ? latest.sha.slice(0, 8) : 'master';
   const latestDate = latest?.commit?.author?.date
     ? latest.commit.author.date.slice(0, 10)
@@ -145,6 +152,7 @@ export async function checkLlamaCppStatus(
     commitsAhead: aheadBy,
     latestDate,
     latestMessage,
+    status: String(data.status ?? 'unknown'),
   };
 }
 

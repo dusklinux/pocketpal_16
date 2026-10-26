@@ -7,9 +7,6 @@ on:
         required: false
         type: boolean
         default: true
-  schedule:
-    # Run weekly on Sundays at 00:00 UTC
-    - cron: '0 0 * * 0'
   push:
     tags:
       - 'v*'
@@ -46,14 +43,22 @@ jobs:
           path: build/ios-build.log
           if-no-files-found: ignore
       - name: Publish Release IPA
-        if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.publish_release == 'true' || github.event_name == 'schedule'
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -euo pipefail
+          VERSION_TAG="v$(node -p "require('./package.json').version")"
           TAG_NAME="${GITHUB_REF_NAME}"
-          if [[ "${TAG_NAME}" != v* ]]; then
-            TAG_NAME="v$(node -p "require('./package.json').version")"
+          if [[ "${GITHUB_REF_TYPE}" != tag ]]; then
+            TAG_NAME="$VERSION_TAG"
           fi
-          gh release view "$TAG_NAME" >/dev/null 2>&1 && \
-            gh release upload "$TAG_NAME" build/PocketPal16.ipa --clobber || \
-            gh release create "$TAG_NAME" build/PocketPal16.ipa --title "PocketPal 16 $TAG_NAME" --notes "Release build of PocketPal 16 IPA for iOS 16 (TrollStore)."
+          [[ "$TAG_NAME" == "$VERSION_TAG" ]] || { echo 'Tag and app version differ.' >&2; exit 1; }
+          NATIVE_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/DerivedData/Build/Products/Release-iphoneos/PocketPal.app/Info.plist)
+          [[ "$NATIVE_VERSION" == "${VERSION_TAG#v}" ]] || { echo 'Native bundle and package version differ.' >&2; exit 1; }
+          [[ "$(node -p "require('fs').readFileSync('src/updater.ts', 'utf8').match(/APP_VERSION = '([^']+)'/)[1]")" == "${VERSION_TAG#v}" ]] || { echo 'Updater and app version differ.' >&2; exit 1; }
+          # A new native build needs a new version. Never replace an existing IPA:
+          # clients comparing versions would otherwise miss the changed engine.
+          gh release create "$TAG_NAME" build/PocketPal16.ipa \
+            --target "$GITHUB_SHA" --title "PocketPal 16 $TAG_NAME" \
+            --notes "Full native iOS 16 build from $GITHUB_SHA. Engine: $(node -p "require('fs').readFileSync('scripts/prepare-backend.cjs', 'utf8').match(/const commit = '([^']+)'/)[1]"). Install with TrollStore Lite on a jailbroken device."

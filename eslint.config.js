@@ -29,6 +29,7 @@ module.exports = [
       globals: {
         setTimeout: 'readonly',
         clearTimeout: 'readonly',
+        AbortController: 'readonly',
         fetch: 'readonly',
       },
     },

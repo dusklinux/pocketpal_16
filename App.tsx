@@ -28,13 +28,12 @@ import {Settings} from './src/chat';
 import {Palette, palettes, resolveTheme, ThemeMode} from './src/theme';
 import {
   APP_VERSION,
-  checkAllUpdates,
-  CombinedUpdateStatus,
   DEFAULT_REPO,
   installWithTrollStore,
   PINNED_LLAMA_CPP_SHORT,
   PINNED_LLAMA_CPP_DATE,
 } from './src/updater';
+import {updates} from './src/update-controller';
 
 type Page = 'Chat' | 'Models' | 'History' | 'Settings';
 const attempt = (work: () => Promise<unknown>) => {
@@ -88,11 +87,8 @@ function SettingsForm({
     temperature: String(draft.temperature),
     topP: String(draft.topP),
   });
-  const [updateState, setUpdateState] = useState<{
-    checking: boolean;
-    data: CombinedUpdateStatus | null;
-  }>({checking: false, data: null});
-  const [updateRepo, setUpdateRepo] = useState(DEFAULT_REPO);
+  const updateState = updates;
+  const [updateRepo, setUpdateRepo] = useState(updates.repo);
   const [directIpaUrl, setDirectIpaUrl] = useState('');
 
   useEffect(() => {
@@ -100,12 +96,7 @@ function SettingsForm({
   }, [currentTheme]);
 
   const checkUpdates = () => {
-    setUpdateState({checking: true, data: null});
-    attempt(async () => {
-      const target = updateRepo.trim() || DEFAULT_REPO;
-      const data = await checkAllUpdates(APP_VERSION, target);
-      setUpdateState({checking: false, data});
-    });
+    void updates.check(true, updateRepo.trim() || DEFAULT_REPO);
   };
 
   const fields = [
@@ -215,7 +206,9 @@ function SettingsForm({
               <Text style={styles.status}>
                 {updateState.data.app?.hasUpdate
                   ? `Update available: v${updateState.data.app.latestVersion}`
-                  : `App is up to date (v${APP_VERSION})`}
+                  : updateState.data.app
+                    ? `No newer app release (installed v${APP_VERSION})`
+                    : 'App update check failed'}
               </Text>
               {updateState.data.appError && (
                 <Text style={styles.error}>{updateState.data.appError}</Text>
@@ -223,9 +216,9 @@ function SettingsForm({
               {updateState.data.engine ? (
                 <Text style={styles.status}>
                   Upstream llama.cpp:{' '}
-                  {updateState.data.engine.commitsAhead === 0
+                  {updateState.data.engine.status === 'identical'
                     ? 'Up to date with master'
-                    : `${updateState.data.engine.commitsAhead} commits ahead (latest: ${updateState.data.engine.latestCommit} on ${updateState.data.engine.latestDate})`}
+                    : `${updateState.data.engine.commitsAhead} upstream commits ahead; ${updateState.data.engine.status} (latest: ${updateState.data.engine.latestCommit} on ${updateState.data.engine.latestDate})`}
                 </Text>
               ) : updateState.data.engineError ? (
                 <Text style={styles.error}>{updateState.data.engineError}</Text>
@@ -249,6 +242,21 @@ function SettingsForm({
           )}
         </View>
 
+        {updateState.error && (
+          <Text style={styles.error}>{updateState.error}</Text>
+        )}
+        <Text style={styles.path}>
+          Checks every 48 hours while open, or when reopened after becoming due.
+          Failed checks retry after one hour. Installation is your choice.
+          Engine changes arrive inside a full native IPA release.
+        </Text>
+        {!!updateState.lastCheckedAt && (
+          <Text style={styles.path}>
+            Last check: {new Date(updateState.lastCheckedAt).toLocaleString()}
+            {'\n'}Next check:{' '}
+            {new Date(updateState.nextCheckAt).toLocaleString()}
+          </Text>
+        )}
         <View style={styles.row}>
           <Button
             color={colors.accent}
@@ -350,8 +358,11 @@ function Main() {
   }, [activeId, page]);
   useEffect(() => {
     const unsubscribe = chat.subscribe(redraw);
+    const unsubscribeUpdates = updates.subscribe(redraw);
+    updates.setActive(AppState.currentState === 'active');
     attempt(() => chat.initialize());
     const state = AppState.addEventListener('change', next => {
+      updates.setActive(next === 'active');
       if (next === 'background') {
         attempt(() => chat.background());
       } else if (next === 'active') {
@@ -365,6 +376,8 @@ function Main() {
     });
     return () => {
       unsubscribe();
+      unsubscribeUpdates();
+      updates.setActive(false);
       state.remove();
       memory.remove();
     };
@@ -432,6 +445,13 @@ function Main() {
               : 'No model loaded'}
             {chat.busy ? ' · Working…' : ''}
           </Text>
+          {updates.data?.app?.hasUpdate && (
+            <Button
+              color={colors.accent}
+              title={`Update available: v${updates.data.app.latestVersion} — view in Settings`}
+              onPress={() => setPage('Settings')}
+            />
+          )}
         </>
       )}
       {!!chat.error && (

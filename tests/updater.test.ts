@@ -27,6 +27,11 @@ describe('updater module', () => {
     expect(compareSemver('v1.19.1', '1.19.1')).toBe(0);
     expect(compareSemver('1.19.0', '1.19.1')).toBeLessThan(0);
     expect(compareSemver('1.18.9', '1.19.1')).toBeLessThan(0);
+    expect(compareSemver('1.20.0-rc.1', '1.20.0')).toBeLessThan(0);
+    expect(compareSemver('1.20.0+build.10', '1.20.0')).toBe(0);
+    expect(() => compareSemver('release', '1.20.0')).toThrow(
+      'Invalid release version',
+    );
   });
 
   test('checkGithubRelease identifies available IPA update', async () => {
@@ -38,6 +43,10 @@ describe('updater module', () => {
       html_url:
         'https://github.com/dusklinux/pocketpal_16/releases/tag/v1.20.0',
       assets: [
+        {
+          name: 'PocketPal16-js.ipa',
+          browser_download_url: 'https://example.com/ui.ipa',
+        },
         {
           name: 'PocketPal16.ipa',
           browser_download_url:
@@ -99,11 +108,17 @@ describe('updater module', () => {
       ],
     };
 
-    (globalThis as any).fetch = jest.fn().mockResolvedValue({
-      ok: true,
-      status: 200,
-      json: async () => mockCompare,
-    });
+    (globalThis as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => mockCompare.commits[0],
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => mockCompare,
+      });
 
     const status = await checkLlamaCppStatus(
       'c83f3058b6f876f2f7e6ccbada858b2446860c85',
@@ -134,7 +149,7 @@ describe('updater module', () => {
     const combined = await checkAllUpdates('1.19.1');
     expect(combined.engine?.commitsAhead).toBe(5);
     expect(combined.app).toBeNull();
-    expect(combined.appError).toContain('No releases published');
+    expect(combined.appError).toContain('HTTP 404');
   });
 
   test('installWithTrollStore opens TrollStore URL scheme', async () => {
@@ -154,5 +169,72 @@ describe('updater module', () => {
     await expect(installWithTrollStore('')).rejects.toThrow(
       'Please specify a valid IPA URL.',
     );
+  });
+
+  test('compare pagination cannot make an older commit look like the latest engine', async () => {
+    (globalThis as any).fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          sha: 'head331abcdef',
+          commit: {message: 'Actual head'},
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          ahead_by: 331,
+          status: 'ahead',
+          commits: [{sha: 'old250'}],
+        }),
+      });
+    const status = await checkLlamaCppStatus();
+    expect(status.latestCommit).toBe('head331a');
+    expect(status.commitsAhead).toBe(331);
+    expect(status.status).toBe('ahead');
+    expect(fetch).toHaveBeenLastCalledWith(
+      expect.stringContaining('...head331abcdef?per_page=1'),
+      expect.anything(),
+    );
+  });
+
+  test('a release containing only a JS update is not an engine installation candidate', async () => {
+    (globalThis as any).fetch = jest.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        tag_name: 'v1.20.0',
+        assets: [
+          {
+            name: 'PocketPal16-js.ipa',
+            browser_download_url: 'https://example.com/ui.ipa',
+          },
+        ],
+      }),
+    });
+    await expect(checkGithubRelease()).rejects.toThrow(
+      'no PocketPal16.ipa native build',
+    );
+  });
+
+  test('a stalled request is aborted after 20 seconds', async () => {
+    jest.useFakeTimers();
+    try {
+      (globalThis as any).fetch = jest.fn(
+        (_url, options) =>
+          new Promise((_resolve, reject) => {
+            options.signal.addEventListener('abort', () =>
+              reject(new Error('Request aborted')),
+            );
+          }),
+      );
+      const checked =
+        expect(checkGithubRelease()).rejects.toThrow('Request aborted');
+      await jest.advanceTimersByTimeAsync(20000);
+      await checked;
+      expect(jest.getTimerCount()).toBe(0);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
