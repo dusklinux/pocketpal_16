@@ -356,3 +356,136 @@ test('new installs load on CPU and Metal remains an explicit setting', async () 
   expect(mockInit.mock.calls.at(-1)![0].n_gpu_layers).toBe(99);
   expect(mockInit.mock.calls.at(-1)![0].devices).toBeUndefined();
 });
+
+const modelFile = (name: string) =>
+  ({
+    name,
+    path: `/data/Documents/models/${name}`,
+    size: 123,
+    isFile: () => true,
+  }) as Awaited<ReturnType<typeof RNFS.readDir>>[number];
+
+test('a successful model load persists the last selection without needing a chat', async () => {
+  const chat = await loaded();
+  expect(chat.lastModelPath).toBe('/data/Documents/models/one.gguf');
+  expect(JSON.parse(storage.writeState.mock.calls.at(-1)![0])).toMatchObject({
+    lastModel: '/data/Documents/models/one.gguf',
+    sessions: [],
+  });
+  mockInit.mockRejectedValueOnce(new Error('bad model'));
+  await expect(chat.loadModel('/bad.gguf')).rejects.toThrow('bad model');
+  expect(chat.lastModelPath).toBe('/data/Documents/models/one.gguf');
+});
+
+test('typing after restart loads the last selection from multiple models, rebasing its container', async () => {
+  files.exists.mockResolvedValueOnce(true);
+  files.readFile.mockResolvedValue(
+    JSON.stringify({
+      settings: defaults,
+      sessions: [],
+      lastModel: '/old-container/Documents/models/two.gguf',
+    }),
+  );
+  files.readDir.mockResolvedValue([
+    modelFile('one.gguf'),
+    modelFile('two.gguf'),
+  ]);
+  const chat = new ChatController();
+  await chat.initialize();
+  expect(mockInit).not.toHaveBeenCalled();
+  await chat.ensureModel();
+  expect(mockInit.mock.calls[0][0].model).toBe(
+    '/data/Documents/models/two.gguf',
+  );
+  await chat.ensureModel();
+  expect(mockInit).toHaveBeenCalledTimes(1);
+});
+
+test('a single model works without a saved selection, while multiple unselected models are not guessed', async () => {
+  files.readDir.mockResolvedValue([
+    modelFile('one.gguf'),
+    modelFile('two.gguf'),
+  ]);
+  const chat = new ChatController();
+  await chat.initialize();
+  await chat.ensureModel();
+  expect(mockInit).not.toHaveBeenCalled();
+  files.readDir.mockResolvedValue([modelFile('one.gguf')]);
+  await chat.refreshModels();
+  await chat.ensureModel();
+  expect(chat.loadedPath).toBe('/data/Documents/models/one.gguf');
+});
+
+test('send loads the remembered model and generates without a manual model load', async () => {
+  files.readDir.mockResolvedValue([modelFile('one.gguf')]);
+  const chat = new ChatController();
+  await chat.initialize();
+  expect(await chat.send('hi')).toBe(true);
+  expect(chat.active?.messages[1].content).toBe('hello');
+  expect(mockInit).toHaveBeenCalledTimes(1);
+});
+
+test('repeated typing while loading starts only one native context and exposes loading state', async () => {
+  files.readDir.mockResolvedValue([modelFile('one.gguf')]);
+  const chat = new ChatController();
+  await chat.initialize();
+  let finish!: (value: Awaited<ReturnType<typeof initLlama>>) => void;
+  mockInit.mockImplementation(
+    () =>
+      new Promise(resolve => {
+        finish = resolve;
+      }),
+  );
+  const loading = chat.ensureModel();
+  await Promise.resolve();
+  expect(chat.loadingModel).toBe(true);
+  await chat.ensureModel();
+  expect(mockInit).toHaveBeenCalledTimes(1);
+  finish(context as unknown as Awaited<ReturnType<typeof initLlama>>);
+  await loading;
+  expect(chat.loadingModel).toBe(false);
+});
+
+test('missing remembered models are reported without silently choosing another model', async () => {
+  files.readDir.mockResolvedValue([modelFile('two.gguf')]);
+  const chat = new ChatController();
+  await chat.initialize();
+  chat.lastModelPath = '/data/Documents/models/one.gguf';
+  await expect(chat.ensureModel()).rejects.toThrow('last model is missing');
+  expect(mockInit).not.toHaveBeenCalled();
+  expect(chat.busy).toBe(false);
+});
+
+test('typing after unload reuses the last model with new context settings', async () => {
+  files.readDir.mockResolvedValue([modelFile('one.gguf')]);
+  const chat = await loaded();
+  await chat.updateSettings({...defaults, context: 2048});
+  await chat.ensureModel();
+  expect(mockInit.mock.calls.at(-1)![0].n_ctx).toBe(2048);
+});
+
+test('directory-listing aliases cannot make a remembered model appear missing after restart', async () => {
+  files.exists.mockResolvedValueOnce(true);
+  files.readFile.mockResolvedValue(
+    JSON.stringify({
+      settings: defaults,
+      sessions: [],
+      lastModel: '/private/old/Documents/models/two.gguf',
+    }),
+  );
+  files.readDir.mockResolvedValue([
+    {
+      ...modelFile('one.gguf'),
+      path: '/private/alias/Documents/models/one.gguf',
+    },
+    {
+      ...modelFile('two.gguf'),
+      path: '/private/alias/Documents/models/two.gguf',
+    },
+  ]);
+  const chat = new ChatController();
+  await chat.initialize();
+  await chat.ensureModel();
+  expect(chat.loadedPath).toBe('/data/Documents/models/two.gguf');
+  expect(chat.error).toBe('');
+});

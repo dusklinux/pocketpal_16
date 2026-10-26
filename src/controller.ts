@@ -15,6 +15,10 @@ import {
 export const statePath = `${RNFS.LibraryDirectoryPath}/pocketpal16.json`;
 export const modelDirectory = `${RNFS.DocumentDirectoryPath}/models`;
 export type LocalModel = {name: string; path: string; size: number};
+const rebaseModel = (path: string) =>
+  path.includes('/Documents/models/')
+    ? `${modelDirectory}/${path.split('/').pop()}`
+    : path;
 
 export class ChatController {
   sessions: Session[] = [];
@@ -22,6 +26,8 @@ export class ChatController {
   models: LocalModel[] = [];
   activeId: string | null = null;
   loadedPath: string | null = null;
+  lastModelPath: string | null = null;
+  loadingModel = false;
   backend = '';
   ready = false;
   busy = false;
@@ -62,10 +68,11 @@ export class ChatController {
       this.sessions = state.sessions.map(session => ({
         ...session,
         // App updates can change the iOS data-container UUID.
-        model: session.model.includes('/Documents/models/')
-          ? `${modelDirectory}/${session.model.split('/').pop()}`
-          : session.model,
+        model: rebaseModel(session.model),
       }));
+      this.lastModelPath = state.lastModel
+        ? rebaseModel(state.lastModel)
+        : null;
       this.settings = state.settings;
       this.activeId = this.sessions[0]?.id ?? null;
       await this.refreshModels();
@@ -81,7 +88,11 @@ export class ChatController {
     }
   }
   async persist() {
-    await this.saves.save({sessions: this.sessions, settings: this.settings});
+    await this.saves.save({
+      sessions: this.sessions,
+      settings: this.settings,
+      lastModel: this.lastModelPath,
+    });
   }
   async refreshModels() {
     await RNFS.mkdir(modelDirectory);
@@ -89,7 +100,9 @@ export class ChatController {
       .filter(file => file.isFile() && /\.gguf$/i.test(file.name))
       .map(file => ({
         name: file.name,
-        path: file.path,
+        // Directory listings can use /private/var while Documents uses /var.
+        // Keep one runtime-discovered spelling for saved and listed models.
+        path: `${modelDirectory}/${file.name}`,
         size: Number(file.size),
       }))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -134,11 +147,25 @@ export class ChatController {
       }
     }
   }
+  async ensureModel() {
+    if (!this.ready || this.context || this.busy || this.inBackground) return;
+    const path =
+      this.lastModelPath ??
+      (this.models.length === 1 ? this.models[0].path : null);
+    if (!path) return;
+    if (!this.models.some(model => model.path === path)) {
+      throw new Error(
+        'The last model is missing. Import it again or select another model in Models.',
+      );
+    }
+    await this.loadModel(path);
+  }
   async loadModel(path: string) {
     if (this.busy) {
       return;
     }
     this.busy = true;
+    this.loadingModel = true;
     this.error = '';
     this.notify();
     try {
@@ -161,7 +188,10 @@ export class ChatController {
       }
       this.loadedPath = path;
       this.backend = this.context.gpu ? 'Metal' : 'CPU';
+      this.lastModelPath = path;
+      await this.persist();
     } finally {
+      this.loadingModel = false;
       this.busy = false;
       this.notify();
     }
@@ -259,7 +289,11 @@ export class ChatController {
       return false;
     }
     if (!this.context || !this.loadedPath) {
-      throw new Error('Load a model first.');
+      await this.ensureModel();
+      if (this.inBackground) return false;
+      if (!this.context || !this.loadedPath) {
+        throw new Error('Import or select a model in Models first.');
+      }
     }
     if (!this.active) {
       this.newChat();

@@ -8,7 +8,11 @@ import {
 } from '../src/chat';
 
 test('starts with empty history and validates generation limits', () => {
-  expect(readSaved(null)).toEqual({sessions: [], settings: defaults});
+  expect(readSaved(null)).toEqual({
+    sessions: [],
+    settings: defaults,
+    lastModel: null,
+  });
   expect(() => validateSettings({...defaults, temperature: NaN})).toThrow();
   expect(() => validateSettings({...defaults, maxTokens: 1024})).toThrow();
   expect(() => validateSettings({...defaults, context: 512.5})).toThrow();
@@ -18,6 +22,18 @@ test('damaged history is rejected instead of silently overwritten', () => {
   expect(() =>
     readSaved(JSON.stringify({sessions: [{id: 'x'}], settings: defaults})),
   ).toThrow();
+});
+
+test('old saved histories supply an initial last-model selection and invalid selections are rejected', () => {
+  const sessions = [
+    {id: 's', title: 'hi', model: '/models/old.gguf', messages: []},
+  ];
+  expect(
+    readSaved(JSON.stringify({sessions, settings: defaults})).lastModel,
+  ).toBe('/models/old.gguf');
+  expect(() =>
+    readSaved(JSON.stringify({sessions, settings: defaults, lastModel: 12})),
+  ).toThrow('model selection');
 });
 test('trims whole old turns while keeping system and latest message; does not mutate saved history', async () => {
   const history: Message[] = [

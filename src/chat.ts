@@ -25,7 +25,11 @@ export const defaults: Settings = {
   gpu: false,
   systemPrompt: 'You are a helpful assistant. Give clear, concise answers.',
 };
-export type SavedState = {sessions: Session[]; settings: Settings};
+export type SavedState = {
+  sessions: Session[];
+  settings: Settings;
+  lastModel?: string | null;
+};
 export type PromptMessage = {
   role: 'system' | 'user' | 'assistant';
   content: string;
@@ -71,11 +75,14 @@ export function validateSettings(value: Settings): Settings {
 
 export function readSaved(raw: string | null): SavedState {
   if (raw === null) {
-    return {sessions: [], settings: {...defaults}};
+    return {sessions: [], settings: {...defaults}, lastModel: null};
   }
   const parsed = JSON.parse(raw);
   if (!parsed || !Array.isArray(parsed.sessions) || !parsed.settings) {
     throw new Error('Saved data is invalid.');
+  }
+  if (parsed.lastModel != null && typeof parsed.lastModel !== 'string') {
+    throw new Error('Saved model selection is invalid.');
   }
   const ids = new Set<string>();
   for (const session of parsed.sessions) {
@@ -103,6 +110,10 @@ export function readSaved(raw: string | null): SavedState {
   return {
     sessions: parsed.sessions,
     settings: validateSettings(parsed.settings),
+    lastModel:
+      parsed.lastModel ??
+      parsed.sessions.find((session: Session) => session.model)?.model ??
+      null,
   };
 }
 

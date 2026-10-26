@@ -443,7 +443,11 @@ function Main() {
             {chat.loadedPath
               ? `${chat.loadedPath.split('/').pop()} · ${chat.backend}`
               : 'No model loaded'}
-            {chat.busy ? ' · Working…' : ''}
+            {chat.loadingModel
+              ? ' · Loading model…'
+              : chat.busy
+                ? ' · Working…'
+                : ''}
           </Text>
           {updates.data?.app?.hasUpdate && (
             <Button
@@ -536,9 +540,7 @@ function Main() {
               styles={styles}
               label="Retry last response"
               symbol="↻"
-              disabled={
-                chat.busy || !chat.loadedPath || !chat.active?.messages.length
-              }
+              disabled={chat.busy || !chat.active?.messages.length}
               onPress={() => attempt(() => chat.retry())}
             />
             <TextInput
@@ -550,8 +552,13 @@ function Main() {
               multiline
               placeholder="Message"
               value={input}
-              onChangeText={setInput}
-              editable={!chat.busy}
+              onChangeText={text => {
+                setInput(text);
+                if (text.trim() && !input.trim()) {
+                  attempt(() => chat.ensureModel());
+                }
+              }}
+              editable={!chat.busy || chat.loadingModel}
             />
             {chat.generating ? (
               <IconButton
@@ -565,7 +572,7 @@ function Main() {
                 styles={styles}
                 label="Send message"
                 symbol="↑"
-                disabled={chat.busy || !chat.loadedPath || !input.trim()}
+                disabled={chat.busy || !input.trim()}
                 onPress={() => {
                   const text = input;
                   const isFirst = (chat.active?.messages.length ?? 0) === 0;
