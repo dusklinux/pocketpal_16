@@ -1,5 +1,7 @@
 name: Build PocketPal 16 IPA
 on:
+  schedule:
+    - cron: '0 4 * * 1'
   workflow_dispatch:
     inputs:
       publish_release:
@@ -7,9 +9,17 @@ on:
         required: false
         type: boolean
         default: true
+      bump_version:
+        description: 'Auto-bump patch version, commit, and tag before building'
+        required: false
+        type: boolean
+        default: true
   push:
     tags:
       - 'v*'
+concurrency:
+  group: build-ios16
+  cancel-in-progress: false
 permissions:
   contents: write
 jobs:
@@ -20,6 +30,8 @@ jobs:
       RNLLAMA_SKIP_POSTINSTALL: '1'
     steps:
       - uses: actions/checkout@v7.0.1
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v7.1.0
         with:
           node-version: '24.21.0'
@@ -29,6 +41,89 @@ jobs:
           bundler-cache: true
       - name: Install JavaScript dependencies
         run: npx --yes yarn@1.22.22 install --frozen-lockfile --non-interactive
+      - name: Bump app version for scheduled or requested release
+        if: github.event_name == 'schedule' || (inputs.publish_release && inputs.bump_version)
+        run: |
+          set -euo pipefail
+          [[ "${GITHUB_REF_TYPE}" == "branch" ]] || { echo 'Version bump requires a branch ref.' >&2; exit 1; }
+          node <<'NODE'
+          const fs = require('node:fs');
+          const {execFileSync} = require('node:child_process');
+
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const oldVersion = pkg.version;
+          const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(oldVersion);
+          if (!match) {
+            throw new Error(`Unsupported version format in package.json: ${oldVersion}`);
+          }
+
+          const existingTags = new Set(
+            execFileSync('git', ['tag', '-l', 'v*'], {encoding: 'utf8'})
+              .split('\n')
+              .map(s => s.trim())
+              .filter(Boolean),
+          );
+
+          const major = Number(match[1]);
+          const minor = Number(match[2]);
+          let patch = Number(match[3]) + 1;
+          while (existingTags.has(`v${major}.${minor}.${patch}`)) {
+            patch += 1;
+          }
+          const newVersion = `${major}.${minor}.${patch}`;
+
+          // 1. package.json
+          pkg.version = newVersion;
+          fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
+
+          // 2. .version (preserve trailing newline convention)
+          const hadNewline =
+            !fs.existsSync('.version') ||
+            fs.readFileSync('.version', 'utf8').endsWith('\n');
+          fs.writeFileSync('.version', newVersion + (hadNewline ? '\n' : ''));
+
+          // 3. src/updater.ts
+          const updaterPath = 'src/updater.ts';
+          const updaterSrc = fs.readFileSync(updaterPath, 'utf8');
+          const updatedUpdater = updaterSrc.replace(
+            /export const APP_VERSION = '[^']+';/,
+            `export const APP_VERSION = '${newVersion}';`,
+          );
+          if (updaterSrc === updatedUpdater) {
+            throw new Error('Failed to update APP_VERSION in src/updater.ts');
+          }
+          fs.writeFileSync(updaterPath, updatedUpdater);
+
+          // 4. iOS Info.plist / project.pbxproj (if hardcoded)
+          for (const iosFile of [
+            'ios/PocketPal/Info.plist',
+            'ios/PocketPal.xcodeproj/project.pbxproj',
+          ]) {
+            if (fs.existsSync(iosFile)) {
+              const content = fs.readFileSync(iosFile, 'utf8');
+              const updated = content
+                .replace(
+                  /(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]+(<\/string>)/,
+                  `$1${newVersion}$2`,
+                )
+                .replace(
+                  /(MARKETING_VERSION = )[^;]+(;)/g,
+                  `$1${newVersion}$2`,
+                );
+              if (updated !== content) {
+                fs.writeFileSync(iosFile, updated);
+              }
+            }
+          }
+
+          console.log(`Bumped version: ${oldVersion} -> ${newVersion}`);
+          NODE
+          NEW_VERSION=$(node -p "require('./package.json').version")
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(release): v${NEW_VERSION}"
+          git tag "v${NEW_VERSION}"
       - name: Build device IPA
         run: bash scripts/build-ios.sh
       - uses: actions/upload-artifact@v7.0.2
@@ -43,9 +138,10 @@ jobs:
           path: build/ios-build.log
           if-no-files-found: ignore
       - name: Publish Release IPA
-        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
+        if: github.event_name == 'schedule' || startsWith(github.ref, 'refs/tags/v') || inputs.publish_release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BUMP_VERSION: ${{ inputs.bump_version }}
         run: |
           set -euo pipefail
           VERSION_TAG="v$(node -p "require('./package.json').version")"
@@ -54,11 +150,22 @@ jobs:
             TAG_NAME="$VERSION_TAG"
           fi
           [[ "$TAG_NAME" == "$VERSION_TAG" ]] || { echo 'Tag and app version differ.' >&2; exit 1; }
+          if [[ -f .version ]]; then
+            [[ "$(tr -d '[:space:]' < .version)" == "${VERSION_TAG#v}" ]] || { echo '.version and package version differ.' >&2; exit 1; }
+          fi
           NATIVE_VERSION=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' build/DerivedData/Build/Products/Release-iphoneos/PocketPal.app/Info.plist)
           [[ "$NATIVE_VERSION" == "${VERSION_TAG#v}" ]] || { echo 'Native bundle and package version differ.' >&2; exit 1; }
           [[ "$(node -p "require('fs').readFileSync('src/updater.ts', 'utf8').match(/APP_VERSION = '([^']+)'/)[1]")" == "${VERSION_TAG#v}" ]] || { echo 'Updater and app version differ.' >&2; exit 1; }
+
+          if [[ "${GITHUB_EVENT_NAME}" == "schedule" || "${BUMP_VERSION:-false}" == "true" ]]; then
+            git push origin "HEAD:refs/heads/${GITHUB_REF_NAME}"
+            git push origin "$TAG_NAME"
+          fi
+
+          TARGET_SHA=$(git rev-parse HEAD)
+          ENGINE_COMMIT=$(node -p "require('fs').readFileSync('scripts/prepare-backend.cjs', 'utf8').match(/const commit = '([^']+)'/)[1]")
           # A new native build needs a new version. Never replace an existing IPA:
           # clients comparing versions would otherwise miss the changed engine.
           gh release create "$TAG_NAME" build/PocketPal16.ipa \
-            --target "$GITHUB_SHA" --title "PocketPal 16 $TAG_NAME" \
-            --notes "Full native iOS 16 build from $GITHUB_SHA. Engine: $(node -p "require('fs').readFileSync('scripts/prepare-backend.cjs', 'utf8').match(/const commit = '([^']+)'/)[1]"). Install with TrollStore Lite on a jailbroken device."
+            --target "$TARGET_SHA" --title "PocketPal 16 $TAG_NAME" \
+            --notes "Full native iOS 16 build from $TARGET_SHA. Engine: $ENGINE_COMMIT. Install with TrollStore Lite on a jailbroken device."

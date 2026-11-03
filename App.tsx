@@ -246,9 +246,9 @@ function SettingsForm({
           <Text style={styles.error}>{updateState.error}</Text>
         )}
         <Text style={styles.path}>
-          Checks every 48 hours while open, or when reopened after becoming due.
-          Failed checks retry after one hour. Installation is your choice.
-          Engine changes arrive inside a full native IPA release.
+          Checks weekly while open, or when reopened after becoming due. Failed
+          checks retry after one hour. Installation is your choice. Engine
+          changes arrive inside a full native IPA release.
         </Text>
         {!!updateState.lastCheckedAt && (
           <Text style={styles.path}>
@@ -257,7 +257,7 @@ function SettingsForm({
             {new Date(updateState.nextCheckAt).toLocaleString()}
           </Text>
         )}
-        <View style={styles.row}>
+        <View style={styles.updateActions}>
           <Button
             color={colors.accent}
             title={updateState.checking ? 'Checking…' : 'Check for updates'}
@@ -427,7 +427,6 @@ function Main() {
       />
       {!focusedChat && (
         <>
-          <Text style={styles.title}>PocketPal 16</Text>
           <View style={styles.tabs}>
             {(['Chat', 'Models', 'History', 'Settings'] as Page[]).map(name => (
               <Button
@@ -702,18 +701,15 @@ const createStyles = (colors: Palette) =>
   StyleSheet.create({
     root: {flex: 1, backgroundColor: colors.background},
     flex: {flex: 1},
-    title: {
-      fontSize: 22,
-      fontWeight: '600',
-      paddingHorizontal: 12,
-      paddingTop: 8,
-      color: colors.text,
-    },
     tabs: {flexDirection: 'row', justifyContent: 'space-around'},
     row: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
+    },
+    updateActions: {
+      marginTop: 8,
+      gap: 8,
     },
     status: {
       paddingHorizontal: 12,

@@ -8,7 +8,7 @@ import {
   PINNED_LLAMA_CPP_COMMIT,
 } from './updater';
 
-export const UPDATE_INTERVAL_MS = 48 * 60 * 60 * 1000;
+export const UPDATE_INTERVAL_MS = 7 * 24 * 60 * 60 * 1000;
 export const UPDATE_RETRY_MS = 60 * 60 * 1000;
 export const updateStatePath = `${RNFS.LibraryDirectoryPath}/pocketpal16-updates.json`;
 
@@ -86,7 +86,7 @@ export class UpdateController {
         return;
       this.data = saved.data ?? null;
       this.lastCheckedAt = saved.lastCheckedAt;
-      // A clock correction must not suppress checks for more than 48 hours.
+      // A clock correction must not suppress checks for more than one week.
       this.nextCheckAt = Math.min(
         saved.nextCheckAt,
         this.now() + UPDATE_INTERVAL_MS,
