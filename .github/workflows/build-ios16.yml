@@ -14,6 +14,11 @@ on:
         required: false
         type: boolean
         default: true
+      update_engine:
+        description: 'Auto-rebase onto latest upstream ggml-org/llama.cpp master'
+        required: false
+        type: boolean
+        default: true
   push:
     tags:
       - 'v*'
@@ -41,6 +46,9 @@ jobs:
           bundler-cache: true
       - name: Install JavaScript dependencies
         run: npx --yes yarn@1.22.22 install --frozen-lockfile --non-interactive
+      - name: Auto-rebase llama.cpp engine from upstream master
+        if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && inputs.update_engine)
+        run: bash scripts/rebase-engine.sh master
       - name: Bump app version for scheduled or requested release
         if: github.event_name == 'schedule' || (inputs.publish_release && inputs.bump_version)
         run: |
@@ -119,17 +127,24 @@ jobs:
           console.log(`Bumped version: ${oldVersion} -> ${newVersion}`);
           NODE
           NEW_VERSION=$(node -p "require('./package.json').version")
+          ENGINE_SHORT=$(node -p "require('node:fs').readFileSync('src/updater.ts', 'utf8').match(/PINNED_LLAMA_CPP_SHORT = '([^']+)'/)[1]")
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package.json .version src/updater.ts ios/PocketPal/Info.plist ios/PocketPal.xcodeproj/project.pbxproj
-          git commit -m "chore(release): v${NEW_VERSION}"
+          git add package.json .version src/updater.ts scripts/prepare-backend.cjs patches/llama-cpp.patch
+          for ios_file in ios/PocketPal/Info.plist ios/PocketPal.xcodeproj/project.pbxproj; do
+            [[ -f "$ios_file" ]] && git add "$ios_file"
+          done
+          git commit -m "chore(release): v${NEW_VERSION} (llama.cpp ${ENGINE_SHORT})"
           git tag "v${NEW_VERSION}"
       - name: Build device IPA
         run: |
           if ! bash scripts/build-ios.sh; then
-            echo "::error::Build script failed. Dumping compiler errors from build/ios-build.log:"
+            echo "::error::Build script failed. Dumping compiler and linker diagnostics from build/ios-build.log:"
             if [[ -f build/ios-build.log ]]; then
-              grep -n -C 5 -E "(error:|fatal error:|Undefined symbols|ld: symbol|BUILD FAILED)" build/ios-build.log | tail -n 120 || true
+              echo "=== First Compiler/Linker Errors ==="
+              grep -n -C 6 -E "(error:|fatal error:|Undefined symbols|ld: symbol|BUILD FAILED)" build/ios-build.log | head -n 120 || true
+              echo "=== Last Compiler/Linker Errors ==="
+              grep -n -C 6 -E "(error:|fatal error:|Undefined symbols|ld: symbol|BUILD FAILED)" build/ios-build.log | tail -n 120 || true
             fi
             exit 1
           fi
