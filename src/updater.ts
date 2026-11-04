@@ -1,10 +1,10 @@
 import {Linking} from 'react-native';
 
-export const APP_VERSION = '1.19.2';
+export const APP_VERSION = '1.19.3';
 export const DEFAULT_REPO = 'dusklinux/pocketpal_16';
 export const PINNED_LLAMA_CPP_COMMIT =
-  '20a51f24a8523b290dcc1fc4fe9ce8fbdef9de13';
-export const PINNED_LLAMA_CPP_SHORT = '20a51f24a852';
+  '149f5641b931aaf33697d70f9abc90c3e5300247';
+export const PINNED_LLAMA_CPP_SHORT = '149f5641b931';
 export const PINNED_LLAMA_CPP_DATE = '2026-11-03';
 
 export interface UpdateInfo {

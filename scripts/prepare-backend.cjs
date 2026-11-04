@@ -5,7 +5,7 @@ const {spawnSync} = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const backend = path.join(root, 'node_modules', 'llama.rn');
 const patch = path.join(root, 'patches', 'llama-cpp.patch');
-const commit = '20a51f24a8523b290dcc1fc4fe9ce8fbdef9de13';
+const commit = '149f5641b931aaf33697d70f9abc90c3e5300247';
 const hash = crypto
   .createHash('sha256')
   .update(fs.readFileSync(patch))
