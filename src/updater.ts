@@ -1,6 +1,6 @@
 import {Linking} from 'react-native';
 
-export const APP_VERSION = '1.19.1';
+export const APP_VERSION = '1.19.2';
 export const DEFAULT_REPO = 'dusklinux/pocketpal_16';
 export const PINNED_LLAMA_CPP_COMMIT =
   '20a51f24a8523b290dcc1fc4fe9ce8fbdef9de13';
