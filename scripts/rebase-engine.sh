@@ -83,6 +83,7 @@ for wrapper_file in \
   cpp/rn-common.hpp \
   cpp/rn-completion.cpp \
   cpp/rn-slot.cpp \
+  cpp/rn-llama.cpp \
   cpp/jsi/RNLlamaJSI.cpp \
   cmake/rnllama-sources.cmake \
   llama-rn.podspec; do
@@ -111,7 +112,7 @@ const {BASELINE: baseline, UPDATED: updated, PATCH_OUTPUT: output} = process.env
 if (!baseline || !updated || !output) throw Error('Set all three paths');
 function selected(rel) {
   if (['cpp/rn-common.hpp', 'cpp/rn-completion.cpp', 'cpp/rn-slot.cpp',
-       'cpp/jsi/RNLlamaJSI.cpp', 'cmake/rnllama-sources.cmake',
+       'cpp/rn-llama.cpp', 'cpp/jsi/RNLlamaJSI.cpp', 'cmake/rnllama-sources.cmake',
        'llama-rn.podspec'].includes(rel)) return true;
   if (!rel.startsWith('vendor/llama.cpp/')) return false;
   const file = rel.slice('vendor/llama.cpp/'.length);

@@ -11,7 +11,7 @@ index 2417976..a20761a 100644
  set(RNLLAMA_VENDOR_SOURCES
      ${_vendor}/hash/hash.cpp
 diff --git a/cpp/jsi/RNLlamaJSI.cpp b/cpp/jsi/RNLlamaJSI.cpp
-index ffabac4..dc0937b 100644
+index ffabac4..a2fdbe7 100644
 --- a/cpp/jsi/RNLlamaJSI.cpp
 +++ b/cpp/jsi/RNLlamaJSI.cpp
 @@ -12,6 +12,7 @@
@@ -22,6 +22,15 @@ index ffabac4..dc0937b 100644
  #include <atomic>
  #include <map>
  #include <memory>
+@@ -350,7 +351,7 @@ namespace rnllama_jsi {
+ 
+     static json chatParamsJson(const common_chat_params& chatParams) {
+         json result = json::object({
+-            {"prompt", chatParams.prompt},
++            {"prompt", chatParams.prompt.str()},
+             {"chat_format", (int) chatParams.format},
+             {"grammar", chatParams.grammar},
+             {"grammar_lazy", chatParams.grammar_lazy},
 @@ -380,9 +381,6 @@ namespace rnllama_jsi {
          result["grammar_triggers"] = triggers;
  
@@ -79,6 +88,22 @@ index 15e26d4..8478546 100644
 +    result.content = prefill_text + generated_text;
 +    result.accumulated_text = result.content;
      return result;
+ }
+ 
+diff --git a/cpp/rn-llama.cpp b/cpp/rn-llama.cpp
+index c72db47..ec75797 100644
+--- a/cpp/rn-llama.cpp
++++ b/cpp/rn-llama.cpp
+@@ -792,9 +792,9 @@ std::string llama_rn_context::getFormattedChat(
+     // If chat_template is provided, create new one and use it (probably slow)
+     if (!chat_template.empty()) {
+         auto tmps = common_chat_templates_init(model, chat_template);
+-        return common_chat_templates_apply(tmps.get(), inputs).prompt;
++        return common_chat_templates_apply(tmps.get(), inputs).prompt.str();
+     } else {
+-        return common_chat_templates_apply(templates.get(), inputs).prompt;
++        return common_chat_templates_apply(templates.get(), inputs).prompt.str();
+     }
  }
  
 diff --git a/cpp/rn-slot.cpp b/cpp/rn-slot.cpp
