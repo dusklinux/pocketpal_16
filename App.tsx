@@ -24,7 +24,8 @@ import {
   pick,
 } from '@react-native-documents/picker';
 import {controller as chat, modelDirectory} from './src/controller';
-import {Settings} from './src/chat';
+import {parseFiniteSetting, Settings} from './src/chat';
+import {formatMiB, MemoryFitStatus, resolveThreadCount} from './src/memory';
 import {Palette, palettes, resolveTheme, ThemeMode} from './src/theme';
 import {
   APP_VERSION,
@@ -39,6 +40,19 @@ type Page = 'Chat' | 'Models' | 'History' | 'Settings';
 const attempt = (work: () => Promise<unknown>) => {
   work().catch(chat.report);
 };
+
+function fitStatusLabel(status?: MemoryFitStatus): string {
+  switch (status) {
+    case 'fits':
+      return 'Fits';
+    case 'tight':
+      return 'Tight headroom';
+    case 'blocked':
+      return 'Exceeds available RAM';
+    default:
+      return '';
+  }
+}
 
 function IconButton({
   label,
@@ -69,6 +83,80 @@ function IconButton({
   );
 }
 
+type NumericFieldKey =
+  | 'context'
+  | 'threads'
+  | 'maxTokens'
+  | 'temperature'
+  | 'topP'
+  | 'topK'
+  | 'minP'
+  | 'repeatPenalty'
+  | 'presencePenalty'
+  | 'seed';
+
+type NumericFieldSpec = {
+  key: NumericFieldKey;
+  label: string;
+  keyboard: 'number-pad' | 'decimal-pad' | 'numbers-and-punctuation';
+};
+
+const RUNTIME_FIELDS: readonly NumericFieldSpec[] = [
+  {
+    key: 'context',
+    label: 'Context tokens (reloads model)',
+    keyboard: 'number-pad',
+  },
+  {
+    key: 'threads',
+    label: 'CPU threads (0 = Auto, reloads model)',
+    keyboard: 'number-pad',
+  },
+];
+
+const SAMPLING_FIELDS: readonly NumericFieldSpec[] = [
+  {
+    key: 'maxTokens',
+    label: 'Maximum output tokens',
+    keyboard: 'number-pad',
+  },
+  {
+    key: 'temperature',
+    label: 'Temperature (0–2)',
+    keyboard: 'decimal-pad',
+  },
+  {
+    key: 'topP',
+    label: 'Top P (0–1]',
+    keyboard: 'decimal-pad',
+  },
+  {
+    key: 'topK',
+    label: 'Top K (0 = off)',
+    keyboard: 'number-pad',
+  },
+  {
+    key: 'minP',
+    label: 'Min P (0 = off)',
+    keyboard: 'decimal-pad',
+  },
+  {
+    key: 'repeatPenalty',
+    label: 'Repeat penalty (1 = off)',
+    keyboard: 'decimal-pad',
+  },
+  {
+    key: 'presencePenalty',
+    label: 'Presence penalty (-2–2)',
+    keyboard: 'numbers-and-punctuation',
+  },
+  {
+    key: 'seed',
+    label: 'Seed (-1 = random)',
+    keyboard: 'numbers-and-punctuation',
+  },
+];
+
 function SettingsForm({
   styles,
   colors,
@@ -81,11 +169,17 @@ function SettingsForm({
   currentTheme: ThemeMode;
 }) {
   const [draft, setDraft] = useState(chat.settings);
-  const [numbers, setNumbers] = useState({
+  const [numbers, setNumbers] = useState<Record<NumericFieldKey, string>>({
     context: String(draft.context),
+    threads: String(draft.threads),
     maxTokens: String(draft.maxTokens),
     temperature: String(draft.temperature),
     topP: String(draft.topP),
+    topK: String(draft.topK),
+    minP: String(draft.minP),
+    repeatPenalty: String(draft.repeatPenalty),
+    presencePenalty: String(draft.presencePenalty),
+    seed: String(draft.seed),
   });
   const updateState = updates;
   const [updateRepo, setUpdateRepo] = useState(updates.repo);
@@ -99,12 +193,24 @@ function SettingsForm({
     void updates.check(true, updateRepo.trim() || DEFAULT_REPO);
   };
 
-  const fields = [
-    ['context', 'Context tokens (reloads model)'],
-    ['maxTokens', 'Maximum output tokens'],
-    ['temperature', 'Temperature'],
-    ['topP', 'Top P'],
-  ] as const;
+  const autoThreads = resolveThreadCount(0, chat.cpuInfo);
+
+  const renderField = ({key, label, keyboard}: NumericFieldSpec) => (
+    <View key={key}>
+      <Text style={styles.label}>{label}</Text>
+      <TextInput
+        keyboardAppearance={scheme}
+        placeholderTextColor={colors.placeholder}
+        selectionColor={colors.accent}
+        accessibilityLabel={label}
+        style={styles.input}
+        keyboardType={keyboard}
+        value={numbers[key]}
+        onChangeText={value => setNumbers(curr => ({...curr, [key]: value}))}
+      />
+    </View>
+  );
+
   return (
     <ScrollView
       indicatorStyle={scheme === 'dark' ? 'white' : 'black'}
@@ -129,21 +235,18 @@ function SettingsForm({
           );
         })}
       </View>
-      {fields.map(([key, label]) => (
-        <View key={key}>
-          <Text style={styles.label}>{label}</Text>
-          <TextInput
-            keyboardAppearance={scheme}
-            placeholderTextColor={colors.placeholder}
-            selectionColor={colors.accent}
-            accessibilityLabel={label}
-            style={styles.input}
-            keyboardType="decimal-pad"
-            value={numbers[key]}
-            onChangeText={value => setNumbers({...numbers, [key]: value})}
-          />
-        </View>
-      ))}
+
+      <Text style={styles.sectionTitle}>Model & Runtime</Text>
+      {RUNTIME_FIELDS.map(renderField)}
+      {chat.cpuInfo ? (
+        <Text style={styles.path}>
+          Detected CPU: {chat.cpuInfo.activeCores} cores
+          {chat.cpuInfo.performanceCores > 0
+            ? ` (${chat.cpuInfo.performanceCores} performance)`
+            : ''}
+          {' · '}Auto uses {autoThreads} thread{autoThreads === 1 ? '' : 's'}
+        </Text>
+      ) : null}
       <View style={styles.row}>
         <Text style={[styles.label, styles.flex]}>
           Use Metal GPU (reloads model)
@@ -154,6 +257,9 @@ function SettingsForm({
           disabled={chat.busy}
         />
       </View>
+
+      <Text style={styles.sectionTitle}>Sampling</Text>
+      {SAMPLING_FIELDS.map(renderField)}
       <Text style={styles.label}>System prompt</Text>
       <TextInput
         keyboardAppearance={scheme}
@@ -173,10 +279,28 @@ function SettingsForm({
           attempt(async () => {
             const next: Settings = {
               ...draft,
-              context: Number(numbers.context),
-              maxTokens: Number(numbers.maxTokens),
-              temperature: Number(numbers.temperature),
-              topP: Number(numbers.topP),
+              context: parseFiniteSetting(numbers.context, 'Context tokens'),
+              threads: parseFiniteSetting(numbers.threads, 'CPU threads'),
+              maxTokens: parseFiniteSetting(
+                numbers.maxTokens,
+                'Maximum output tokens',
+              ),
+              temperature: parseFiniteSetting(
+                numbers.temperature,
+                'Temperature',
+              ),
+              topP: parseFiniteSetting(numbers.topP, 'Top P'),
+              topK: parseFiniteSetting(numbers.topK, 'Top K'),
+              minP: parseFiniteSetting(numbers.minP, 'Min P'),
+              repeatPenalty: parseFiniteSetting(
+                numbers.repeatPenalty,
+                'Repeat penalty',
+              ),
+              presencePenalty: parseFiniteSetting(
+                numbers.presencePenalty,
+                'Presence penalty',
+              ),
+              seed: parseFiniteSetting(numbers.seed, 'Seed'),
             };
             await chat.updateSettings(next);
             Alert.alert('Settings saved');
@@ -357,6 +481,11 @@ function Main() {
     list.current?.scrollToEnd({animated: false});
   }, [activeId, page]);
   useEffect(() => {
+    if (page === 'Models' && chat.ready) {
+      attempt(() => chat.refreshTelemetry());
+    }
+  }, [page]);
+  useEffect(() => {
     const unsubscribe = chat.subscribe(redraw);
     const unsubscribeUpdates = updates.subscribe(redraw);
     updates.setActive(AppState.currentState === 'active');
@@ -370,9 +499,7 @@ function Main() {
       }
     });
     const memory = AppState.addEventListener('memoryWarning', () => {
-      if (!chat.busy) {
-        attempt(() => chat.unload());
-      }
+      attempt(() => chat.handleMemoryWarning());
     });
     return () => {
       unsubscribe();
@@ -419,6 +546,26 @@ function Main() {
       </SafeAreaView>
     );
   }
+
+  const telemetryParts: string[] = [];
+  if (chat.memoryInfo?.availableKnown) {
+    telemetryParts.push(
+      `Available RAM: ${formatMiB(chat.memoryInfo.availableBytes)}`,
+    );
+  }
+  if (chat.memoryInfo && chat.memoryInfo.footprintBytes > 0) {
+    telemetryParts.push(`App: ${formatMiB(chat.memoryInfo.footprintBytes)}`);
+  }
+  if (chat.cpuInfo && chat.cpuInfo.activeCores > 0) {
+    telemetryParts.push(
+      `CPU: ${chat.cpuInfo.activeCores}c${
+        chat.cpuInfo.performanceCores > 0
+          ? ` (${chat.cpuInfo.performanceCores}P)`
+          : ''
+      }`,
+    );
+  }
+
   return (
     <SafeAreaView style={styles.root}>
       <StatusBar
@@ -440,7 +587,9 @@ function Main() {
           </View>
           <Text numberOfLines={2} style={styles.status}>
             {chat.loadedPath
-              ? `${chat.loadedPath.split('/').pop()} · ${chat.backend}`
+              ? `${chat.loadedPath.split('/').pop()} · ${chat.backend}${
+                  chat.activeThreads ? ` · ${chat.activeThreads}T` : ''
+                }`
               : 'No model loaded'}
             {chat.loadingModel
               ? ' · Loading model…'
@@ -466,6 +615,11 @@ function Main() {
             chat.notify();
           }}>
           {chat.error}
+        </Text>
+      )}
+      {!!chat.memoryWarningNote && (
+        <Text style={styles.notice} onPress={chat.clearMemoryWarningNote}>
+          {chat.memoryWarningNote}
         </Text>
       )}
       {page === 'Chat' && (
@@ -613,6 +767,9 @@ function Main() {
               onPress={() => attempt(() => chat.unload())}
             />
           </View>
+          {telemetryParts.length > 0 && (
+            <Text style={styles.path}>{telemetryParts.join(' · ')}</Text>
+          )}
           <Text style={styles.label}>
             SSH: copy GGUF files into this folder, then tap Refresh.
           </Text>
@@ -627,22 +784,30 @@ function Main() {
           {!chat.models.length && (
             <Text style={styles.label}>No GGUF files imported yet.</Text>
           )}
-          {chat.models.map(model => (
-            <View key={model.path} style={styles.card}>
-              <Text style={styles.message}>{model.name}</Text>
-              <Text style={styles.status}>
-                {(model.size / 1024 ** 2).toFixed(0)} MiB
-              </Text>
-              <Button
-                color={colors.accent}
-                title={chat.loadedPath === model.path ? 'Loaded' : 'Load'}
-                disabled={
-                  chat.busy || picking || chat.loadedPath === model.path
-                }
-                onPress={() => attempt(() => chat.loadModel(model.path))}
-              />
-            </View>
-          ))}
+          {chat.models.map(model => {
+            const fitLabel = fitStatusLabel(model.fitStatus);
+            const estText = model.estimatedBytes
+              ? ` · ~${formatMiB(model.estimatedBytes)} at ${chat.settings.context} ctx`
+              : '';
+            return (
+              <View key={model.path} style={styles.card}>
+                <Text style={styles.message}>{model.name}</Text>
+                <Text style={styles.status}>
+                  {formatMiB(model.size)}
+                  {estText}
+                  {fitLabel ? ` · ${fitLabel}` : ''}
+                </Text>
+                <Button
+                  color={colors.accent}
+                  title={chat.loadedPath === model.path ? 'Loaded' : 'Load'}
+                  disabled={
+                    chat.busy || picking || chat.loadedPath === model.path
+                  }
+                  onPress={() => attempt(() => chat.loadModel(model.path))}
+                />
+              </View>
+            );
+          })}
         </ScrollView>
       )}
       {page === 'History' && (
@@ -721,7 +886,25 @@ const createStyles = (colors: Palette) =>
       color: colors.error,
       backgroundColor: colors.errorBackground,
     },
+    notice: {
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      color: colors.text,
+      backgroundColor: colors.assistant,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+      fontSize: 13,
+    },
     content: {padding: 12, gap: 12},
+    sectionTitle: {
+      fontSize: 15,
+      fontWeight: '700',
+      color: colors.text,
+      marginTop: 8,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      paddingTop: 10,
+    },
     label: {
       fontSize: 14,
       fontWeight: '600',

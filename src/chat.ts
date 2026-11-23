@@ -13,6 +13,12 @@ export type Settings = {
   maxTokens: number;
   temperature: number;
   topP: number;
+  topK: number;
+  minP: number;
+  repeatPenalty: number;
+  presencePenalty: number;
+  seed: number;
+  threads: number;
   gpu: boolean;
   systemPrompt: string;
 };
@@ -22,6 +28,12 @@ export const defaults: Settings = {
   maxTokens: 256,
   temperature: 0.7,
   topP: 0.9,
+  topK: 40,
+  minP: 0.05,
+  repeatPenalty: 1.1,
+  presencePenalty: 0,
+  seed: -1,
+  threads: 0,
   gpu: false,
   systemPrompt: 'You are a helpful assistant. Give clear, concise answers.',
 };
@@ -35,42 +47,94 @@ export type PromptMessage = {
   content: string;
 };
 
-export function validateSettings(value: Settings): Settings {
-  value = {...defaults, ...value};
-  if (!['system', 'light', 'dark'].includes(value.theme)) {
+export function parseFiniteSetting(raw: string, label: string): number {
+  const trimmed = raw.trim();
+  if (!trimmed) {
+    throw new Error(`${label} cannot be empty.`);
+  }
+  const value = Number(trimmed);
+  if (!Number.isFinite(value)) {
+    throw new Error(`${label} must be a valid number.`);
+  }
+  return value;
+}
+
+export function validateSettings(value: Partial<Settings>): Settings {
+  const merged: Settings = {...defaults};
+  for (const [key, entry] of Object.entries(value)) {
+    if (entry !== undefined) {
+      (merged as Record<string, unknown>)[key] = entry;
+    }
+  }
+
+  if (!['system', 'light', 'dark'].includes(merged.theme)) {
     throw new Error('Invalid appearance setting.');
   }
   if (
-    !Number.isInteger(value.context) ||
-    value.context < 512 ||
-    value.context > 8192
+    !Number.isInteger(merged.context) ||
+    merged.context < 512 ||
+    merged.context > 8192
   ) {
     throw new Error('Context must be a whole number from 512 to 8192.');
   }
   if (
-    !Number.isInteger(value.maxTokens) ||
-    value.maxTokens < 1 ||
-    value.maxTokens > value.context - 64
+    !Number.isInteger(merged.maxTokens) ||
+    merged.maxTokens < 1 ||
+    merged.maxTokens > merged.context - 64
   ) {
     throw new Error('Output tokens must be between 1 and context minus 64.');
   }
   if (
-    !Number.isFinite(value.temperature) ||
-    value.temperature < 0 ||
-    value.temperature > 2
+    !Number.isFinite(merged.temperature) ||
+    merged.temperature < 0 ||
+    merged.temperature > 2
   ) {
     throw new Error('Temperature must be from 0 to 2.');
   }
-  if (!Number.isFinite(value.topP) || value.topP <= 0 || value.topP > 1) {
+  if (!Number.isFinite(merged.topP) || merged.topP <= 0 || merged.topP > 1) {
     throw new Error('Top P must be greater than 0 and at most 1.');
   }
+  if (!Number.isInteger(merged.topK) || merged.topK < 0 || merged.topK > 200) {
+    throw new Error('Top K must be a whole number from 0 to 200.');
+  }
+  if (!Number.isFinite(merged.minP) || merged.minP < 0 || merged.minP > 1) {
+    throw new Error('Min P must be from 0 to 1.');
+  }
   if (
-    typeof value.gpu !== 'boolean' ||
-    typeof value.systemPrompt !== 'string'
+    !Number.isFinite(merged.repeatPenalty) ||
+    merged.repeatPenalty < 0.5 ||
+    merged.repeatPenalty > 2
+  ) {
+    throw new Error('Repeat penalty must be from 0.5 to 2.');
+  }
+  if (
+    !Number.isFinite(merged.presencePenalty) ||
+    merged.presencePenalty < -2 ||
+    merged.presencePenalty > 2
+  ) {
+    throw new Error('Presence penalty must be from -2 to 2.');
+  }
+  if (
+    !Number.isInteger(merged.seed) ||
+    merged.seed < -1 ||
+    merged.seed > 2147483647
+  ) {
+    throw new Error('Seed must be -1 (random) or a non-negative integer.');
+  }
+  if (
+    !Number.isInteger(merged.threads) ||
+    merged.threads < 0 ||
+    merged.threads > 16
+  ) {
+    throw new Error('CPU threads must be a whole number from 0 (Auto) to 16.');
+  }
+  if (
+    typeof merged.gpu !== 'boolean' ||
+    typeof merged.systemPrompt !== 'string'
   ) {
     throw new Error('Invalid generation settings.');
   }
-  return {...value};
+  return {...merged};
 }
 
 export function readSaved(raw: string | null): SavedState {

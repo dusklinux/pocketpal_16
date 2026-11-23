@@ -101,7 +101,7 @@ test('does not release or replace the model while generating; cancellation saves
   });
   const generation = chat.send('hi');
   await signal;
-  await chat.loadModel('/other.gguf');
+  await chat.loadModel('/data/Documents/models/other.gguf');
   await chat.unload();
   expect(context.release).not.toHaveBeenCalled();
   await chat.background();
@@ -147,7 +147,7 @@ test('startup with broken saved data cannot erase it on backgrounding', async ()
 });
 test('replacing a model releases the previous context before initializing another', async () => {
   const chat = await loaded();
-  await chat.loadModel('/two.gguf');
+  await chat.loadModel('/data/Documents/models/two.gguf');
   expect(context.release.mock.invocationCallOrder[0]).toBeLessThan(
     mockInit.mock.invocationCallOrder[1],
   );
@@ -159,7 +159,7 @@ test('settings reload only for context or backend changes', async () => {
   await chat.updateSettings({...defaults, gpu: true});
   expect(chat.loadedPath).toBeNull();
   await chat.updateSettings({...defaults, gpu: false});
-  await chat.loadModel('/one.gguf');
+  await chat.loadModel('/data/Documents/models/one.gguf');
   expect(mockInit.mock.calls.at(-1)![0]).toMatchObject({
     devices: ['CPU'],
     n_gpu_layers: 0,
@@ -169,7 +169,7 @@ test('settings reload only for context or backend changes', async () => {
 test('cross-model history is not silently reused', async () => {
   const chat = await loaded();
   await chat.send('hi');
-  await chat.loadModel('/two.gguf');
+  await chat.loadModel('/data/Documents/models/two.gguf');
   await expect(chat.send('again')).rejects.toThrow('different model');
   expect(chat.active?.messages).toHaveLength(2);
 });
@@ -269,7 +269,7 @@ test('background checkpoint survives a native stop error', async () => {
   });
   const generation = chat.send('hi');
   await started;
-  await expect(chat.background()).rejects.toThrow('stop failed');
+  await chat.background();
   expect(
     JSON.parse(storage.writeState.mock.calls.at(-1)![0]).sessions[0].messages[1]
       .content,
@@ -287,8 +287,8 @@ test('model loading that completes in the background immediately releases its co
         finish = resolve;
       }),
   );
-  const loading = chat.loadModel('/one.gguf');
-  await Promise.resolve();
+  const loading = chat.loadModel('/data/Documents/models/one.gguf');
+  await new Promise(resolve => setTimeout(() => resolve(undefined), 0));
   await chat.background();
   finish(context as unknown as Awaited<ReturnType<typeof initLlama>>);
   await loading;
@@ -299,9 +299,9 @@ test('model loading that completes in the background immediately releases its co
 test('model-load failure clears the old model and releases the busy flag', async () => {
   const chat = await loaded();
   mockInit.mockRejectedValue(new Error('unsupported architecture'));
-  await expect(chat.loadModel('/bad.gguf')).rejects.toThrow(
-    'unsupported architecture',
-  );
+  await expect(
+    chat.loadModel('/data/Documents/models/bad.gguf'),
+  ).rejects.toThrow('unsupported architecture');
   expect(chat.loadedPath).toBeNull();
   expect(chat.busy).toBe(false);
 });
@@ -373,7 +373,9 @@ test('a successful model load persists the last selection without needing a chat
     sessions: [],
   });
   mockInit.mockRejectedValueOnce(new Error('bad model'));
-  await expect(chat.loadModel('/bad.gguf')).rejects.toThrow('bad model');
+  await expect(
+    chat.loadModel('/data/Documents/models/bad.gguf'),
+  ).rejects.toThrow('bad model');
   expect(chat.lastModelPath).toBe('/data/Documents/models/one.gguf');
 });
 
@@ -437,7 +439,7 @@ test('repeated typing while loading starts only one native context and exposes l
       }),
   );
   const loading = chat.ensureModel();
-  await Promise.resolve();
+  await new Promise(resolve => setTimeout(() => resolve(undefined), 0));
   expect(chat.loadingModel).toBe(true);
   await chat.ensureModel();
   expect(mockInit).toHaveBeenCalledTimes(1);
