@@ -3,9 +3,9 @@ import {Linking} from 'react-native';
 export const APP_VERSION = '1.19.3';
 export const DEFAULT_REPO = 'dusklinux/pocketpal_16';
 export const PINNED_LLAMA_CPP_COMMIT =
-  '149f5641b931aaf33697d70f9abc90c3e5300247';
-export const PINNED_LLAMA_CPP_SHORT = '149f5641b931';
-export const PINNED_LLAMA_CPP_DATE = '2026-11-03';
+  '1094646c1fb706b0bc7cf3569c707a173032a01d';
+export const PINNED_LLAMA_CPP_SHORT = '1094646c1fb7';
+export const PINNED_LLAMA_CPP_DATE = '2026-11-23';
 
 export interface UpdateInfo {
   hasUpdate: boolean;

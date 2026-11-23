@@ -9,10 +9,18 @@ xcodebuild -version
 node --version
 bundle exec pod --version
 node scripts/prepare-backend.cjs
-npm run lint
-npm run typecheck
-npm test
-(cd ios && bundle exec pod deintegrate && bundle exec pod install)
+if [[ "${SKIP_JS_CHECKS:-0}" != "1" ]]; then
+  npm run lint
+  npm run typecheck
+  npm test
+fi
+(
+  cd ios
+  if [[ -d Pods ]]; then
+    bundle exec pod deintegrate
+  fi
+  bundle exec pod install
+)
 mkdir -p build
 xcodebuild \
   -workspace ios/PocketPal.xcworkspace \
