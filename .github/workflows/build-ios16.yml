@@ -23,14 +23,6 @@ on:
         required: false
         type: boolean
         default: true
-      macos_runner:
-        description: 'macOS runner pool (macos-15 default for deeper arm64 capacity; macos-26 override)'
-        required: false
-        type: choice
-        default: 'macos-15'
-        options:
-          - 'macos-15'
-          - 'macos-26'
   push:
     tags:
       - 'v*'
@@ -171,7 +163,7 @@ jobs:
   ios:
     needs: preflight
     if: needs.preflight.outputs.should_build == 'true'
-    runs-on: ${{ (github.event_name == 'workflow_dispatch' && inputs.macos_runner) || 'macos-15' }}
+    runs-on: macos-latest
     timeout-minutes: 60
     env:
       RNLLAMA_SKIP_POSTINSTALL: '1'
@@ -295,6 +287,12 @@ jobs:
           done
           git commit -m "chore(release): v${NEW_VERSION} (llama.cpp ${ENGINE_SHORT})"
           git tag "v${NEW_VERSION}"
+
+      - name: Log macOS and Xcode toolchain versions
+        run: |
+          sw_vers
+          xcode-select -p
+          xcodebuild -version
 
       - name: Build device IPA
         env:

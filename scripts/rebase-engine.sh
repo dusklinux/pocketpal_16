@@ -9,6 +9,18 @@ BRIDGE_VERSION="${2:-$(node -p "const v = require('./package.json').dependencies
 OLD_COMMIT="$(node -p "const m = require('node:fs').readFileSync('scripts/prepare-backend.cjs', 'utf8').match(/const commit = '([^']+)';/); if (!m) throw new Error('Pinned commit not found in scripts/prepare-backend.cjs'); m[1];")"
 STATUS_FILE="${REBASE_STATUS_FILE:-}"
 
+WRAPPER_FILES=(
+  cpp/rn-common.hpp
+  cpp/rn-completion.cpp
+  cpp/rn-slot.cpp
+  cpp/rn-llama.cpp
+  cpp/rn-tts.cpp
+  cpp/jsi/RNLlamaJSI.cpp
+  cmake/rnllama-sources.cmake
+  llama-rn.podspec
+)
+WRAPPER_FILES_LIST="$(printf '%s\n' "${WRAPPER_FILES[@]}")"
+
 write_status() {
   local changed="$1"
   local commit="$2"
@@ -23,17 +35,19 @@ write_status() {
 }
 
 # Fast-path check for upstream master without cloning if already identical.
-if [[ "$TARGET_REF" == "master" || "$TARGET_REF" == "origin/master" ]]; then
-  REMOTE_SHA="$(git ls-remote https://github.com/ggml-org/llama.cpp.git refs/heads/master | awk '{print $1}')"
-  if [[ -n "$REMOTE_SHA" && "$REMOTE_SHA" == "$OLD_COMMIT" ]]; then
-    echo "Engine already at latest upstream master ($OLD_COMMIT). Skipping rebase."
+if [[ "${FORCE_REBASE:-0}" != "1" ]]; then
+  if [[ "$TARGET_REF" == "master" || "$TARGET_REF" == "origin/master" ]]; then
+    REMOTE_SHA="$(git ls-remote https://github.com/ggml-org/llama.cpp.git refs/heads/master | awk '{print $1}')"
+    if [[ -n "$REMOTE_SHA" && "$REMOTE_SHA" == "$OLD_COMMIT" ]]; then
+      echo "Engine already at latest upstream master ($OLD_COMMIT). Skipping rebase."
+      write_status "false" "$OLD_COMMIT" ""
+      exit 0
+    fi
+  elif [[ "$TARGET_REF" == "$OLD_COMMIT" ]]; then
+    echo "Target commit ($TARGET_REF) matches current pinned commit. Skipping rebase."
     write_status "false" "$OLD_COMMIT" ""
     exit 0
   fi
-elif [[ "$TARGET_REF" == "$OLD_COMMIT" ]]; then
-  echo "Target commit ($TARGET_REF) matches current pinned commit. Skipping rebase."
-  write_status "false" "$OLD_COMMIT" ""
-  exit 0
 fi
 
 WORK_DIR="$(mktemp -d /tmp/pocketpal16-engine-rebase.XXXXXX)"
@@ -55,15 +69,15 @@ if (!mode || !baseline || !updated || !output) {
   throw new Error('Usage: gen-diff.cjs <vendor-dir|package-patch> with BASELINE, UPDATED, PATCH_OUTPUT');
 }
 
-const WRAPPER_FILES = new Set([
-  'cpp/rn-common.hpp',
-  'cpp/rn-completion.cpp',
-  'cpp/rn-slot.cpp',
-  'cpp/rn-llama.cpp',
-  'cpp/jsi/RNLlamaJSI.cpp',
-  'cmake/rnllama-sources.cmake',
-  'llama-rn.podspec',
-]);
+const WRAPPER_FILES = new Set(
+  (process.env.WRAPPER_FILES || '')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean),
+);
+if (mode === 'package-patch' && WRAPPER_FILES.size === 0) {
+  throw new Error('WRAPPER_FILES env var must be non-empty in package-patch mode');
+}
 
 const GENERATED_VENDOR_RE = /(?:^|\/)(?:build-info\.cpp|llama-version\.h|ggml-version\.h)$/;
 
@@ -309,7 +323,7 @@ else
   NEW_COMMIT="$(git -C "$WORK_DIR/llama-cpp" rev-parse "FETCH_HEAD^{commit}")"
 fi
 
-if [[ "$NEW_COMMIT" == "$OLD_COMMIT" ]]; then
+if [[ "$NEW_COMMIT" == "$OLD_COMMIT" ]] && [[ "${FORCE_REBASE:-0}" != "1" ]]; then
   echo "Target ref $TARGET_REF resolves to current pinned commit ($OLD_COMMIT). Nothing to rebase."
   write_status "false" "$OLD_COMMIT" ""
   exit 0
@@ -453,14 +467,7 @@ NODE
 mkdir -p "$WORK_DIR/updated"
 cp -a "$WORK_DIR/pristine/package/." "$WORK_DIR/updated/"
 
-for wrapper_file in \
-  cpp/rn-common.hpp \
-  cpp/rn-completion.cpp \
-  cpp/rn-slot.cpp \
-  cpp/rn-llama.cpp \
-  cpp/jsi/RNLlamaJSI.cpp \
-  cmake/rnllama-sources.cmake \
-  llama-rn.podspec; do
+for wrapper_file in "${WRAPPER_FILES[@]}"; do
   if [[ -f "$WORK_DIR/work_old/$wrapper_file" ]]; then
     cp -a "$WORK_DIR/work_old/$wrapper_file" "$WORK_DIR/updated/$wrapper_file"
   fi
@@ -589,15 +596,53 @@ function verifyPodspecCpuExclusions() {
   }
 }
 
+function verifyPodspecCodecExclusion() {
+  const podspecPath = path.join(updatedPkg, 'llama-rn.podspec');
+  if (!fs.existsSync(podspecPath)) return;
+
+  const activeLines = fs
+    .readFileSync(podspecPath, 'utf8')
+    .split('\n')
+    .map(line => line.trim())
+    .filter(line => line.length > 0 && !line.startsWith('#'));
+
+  const codecHits = activeLines.filter(
+    line =>
+      /(?:vendor\/)?codec\.cpp\b|\bcodec_cpp\b/i.test(line) &&
+      !/exclude_files/.test(line),
+  );
+
+  if (codecHits.length > 0) {
+    throw new Error(
+      `vendor/codec.cpp must be excluded from llama-rn.podspec (found active references:\n  ${codecHits.join('\n  ')})`,
+    );
+  }
+}
+
+function verifyTtsStubDecoupled() {
+  const ttsPath = path.join(updatedPkg, 'cpp', 'rn-tts.cpp');
+  if (!fs.existsSync(ttsPath)) return;
+
+  const ttsSrc = fs.readFileSync(ttsPath, 'utf8');
+  if (/^\s*#\s*include\s+["<]codec[^">]*[">]/m.test(ttsSrc)) {
+    throw new Error(
+      'cpp/rn-tts.cpp still includes a codec.cpp header; text-only stub must not depend on vendor/codec.cpp.',
+    );
+  }
+}
+
 stampBuildInfo();
 stampVersionHeaders();
 verifyPodspecCpuExclusions();
+verifyPodspecCodecExclusion();
+verifyTtsStubDecoupled();
 NODE
 
 # 6. Regenerate patches/llama-cpp.patch against pristine baseline.
 BASELINE="$WORK_DIR/pristine/package" \
 UPDATED="$WORK_DIR/updated" \
 PATCH_OUTPUT="$ROOT_DIR/patches/llama-cpp.patch" \
+WRAPPER_FILES="$WRAPPER_FILES_LIST" \
 node "$WORK_DIR/gen-diff.cjs" package-patch
 
 # 7. Update tracked pins in scripts/prepare-backend.cjs and src/updater.ts with strict assertions.
