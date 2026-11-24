@@ -16,7 +16,7 @@ if (!expectedBridgeVersion) {
 
 const backend = path.join(root, 'node_modules', 'llama.rn');
 const patch = path.join(root, 'patches', 'llama-cpp.patch');
-const commit = '1094646c1fb706b0bc7cf3569c707a173032a01d';
+const commit = 'af5c58347fdbc2cd19e65b278e81c8f528f8a175';
 const hash = crypto
   .createHash('sha256')
   .update(fs.readFileSync(patch))
