@@ -493,6 +493,21 @@ const short7 = commit.slice(0, 7);
 const oldVendor = path.join(workOld, 'vendor', 'llama.cpp');
 const newVendor = path.join(updatedPkg, 'vendor', 'llama.cpp');
 
+function readCmakeVersion(cmakePath, prefix) {
+  if (!fs.existsSync(cmakePath)) {
+    return {major: '0', minor: '0', patch: '0', version: '0.0.0'};
+  }
+  const content = fs.readFileSync(cmakePath, 'utf8');
+  const get = name => {
+    const m = content.match(new RegExp(`set\\(${prefix}_${name}\\s+([^)]+)\\)`));
+    return m ? m[1].trim().replace(/^["']|["']$/g, '') : '0';
+  };
+  const major = get('VERSION_MAJOR');
+  const minor = get('VERSION_MINOR');
+  const patch = get('VERSION_PATCH');
+  return {major, minor, patch, version: `${major}.${minor}.${patch}`};
+}
+
 function stampBuildInfo() {
   const dst = path.join(newVendor, 'common', 'build-info.cpp');
   const tmpl = path.join(newVendor, 'common', 'build-info.cpp.in');
@@ -501,10 +516,16 @@ function stampBuildInfo() {
   if (fs.existsSync(tmpl)) {
     const rendered = fs
       .readFileSync(tmpl, 'utf8')
+      .replaceAll('@LLAMA_BUILD_NUMBER@', '0')
       .replaceAll('@BUILD_NUMBER@', '0')
+      .replaceAll('@LLAMA_BUILD_COMMIT@', short7)
+      .replaceAll('@LLAMA_COMMIT@', short7)
       .replaceAll('@BUILD_COMMIT@', short7)
       .replaceAll('@BUILD_COMPILER@', 'clang')
       .replaceAll('@BUILD_TARGET@', 'arm64-apple-ios');
+    if (/@\w+@/.test(rendered)) {
+      throw new Error(`Unsubstituted template placeholder in ${dst}:\n${rendered}`);
+    }
     fs.writeFileSync(dst, rendered);
   } else if (fs.existsSync(prev)) {
     const updated = fs
@@ -517,6 +538,9 @@ function stampBuildInfo() {
 }
 
 function stampVersionHeaders() {
+  const llamaVer = readCmakeVersion(path.join(newVendor, 'CMakeLists.txt'), 'LLAMA');
+  const ggmlVer = readCmakeVersion(path.join(newVendor, 'ggml', 'CMakeLists.txt'), 'GGML');
+
   const candidates = [
     'include/llama-version.h',
     'src/llama-version.h',
@@ -532,9 +556,22 @@ function stampVersionHeaders() {
         .readFileSync(tmpl, 'utf8')
         .replaceAll('@LLAMA_BUILD_NUMBER@', '0')
         .replaceAll('@BUILD_NUMBER@', '0')
+        .replaceAll('@LLAMA_BUILD_COMMIT@', short7)
+        .replaceAll('@GGML_BUILD_COMMIT@', short7)
         .replaceAll('@LLAMA_COMMIT@', short7)
         .replaceAll('@GGML_COMMIT@', short7)
-        .replaceAll('@BUILD_COMMIT@', short7);
+        .replaceAll('@BUILD_COMMIT@', short7)
+        .replaceAll('@LLAMA_VERSION_MAJOR@', llamaVer.major)
+        .replaceAll('@LLAMA_VERSION_MINOR@', llamaVer.minor)
+        .replaceAll('@LLAMA_VERSION_PATCH@', llamaVer.patch)
+        .replaceAll('@LLAMA_VERSION@', llamaVer.version)
+        .replaceAll('@GGML_VERSION_MAJOR@', ggmlVer.major)
+        .replaceAll('@GGML_VERSION_MINOR@', ggmlVer.minor)
+        .replaceAll('@GGML_VERSION_PATCH@', ggmlVer.patch)
+        .replaceAll('@GGML_VERSION@', ggmlVer.version);
+      if (/@\w+@/.test(rendered)) {
+        throw new Error(`Unsubstituted template placeholder in ${dst}:\n${rendered}`);
+      }
       fs.writeFileSync(dst, rendered);
     } else if (!fs.existsSync(dst) && fs.existsSync(prev)) {
       const updated = fs

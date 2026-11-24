@@ -4619,7 +4619,7 @@ index 203d1b4..a7cf30b 100644
  void common_models_handler_apply(common_models_handler & handler, common_params & params, common_download_callback * callback = nullptr);
  
 diff --git a/vendor/llama.cpp/common/build-info.cpp b/vendor/llama.cpp/common/build-info.cpp
-index b7f160e..b7d0053 100644
+index b7f160e..015b23e 100644
 --- a/vendor/llama.cpp/common/build-info.cpp
 +++ b/vendor/llama.cpp/common/build-info.cpp
 @@ -3,10 +3,10 @@
@@ -4630,8 +4630,8 @@ index b7f160e..b7d0053 100644
 -char const * LLAMA_COMMIT = "bf9a0cc";
 -char const * LLAMA_COMPILER = "unknown";
 -char const * LLAMA_BUILD_TARGET = "unknown";
-+int LLAMA_BUILD_NUMBER = @LLAMA_BUILD_NUMBER@;
-+char const * LLAMA_COMMIT = "@LLAMA_BUILD_COMMIT@";
++int LLAMA_BUILD_NUMBER = 0;
++char const * LLAMA_COMMIT = "1094646";
 +char const * LLAMA_COMPILER = "clang";
 +char const * LLAMA_BUILD_TARGET = "arm64-apple-ios";
  
@@ -54577,7 +54577,7 @@ index 75188f1..ca36d13 100644
  GGML_API void iq2xs_init_impl(enum ggml_type type);
  GGML_API void iq2xs_free_impl(enum ggml_type type);
 diff --git a/vendor/llama.cpp/ggml/src/ggml-version.h b/vendor/llama.cpp/ggml/src/ggml-version.h
-index 864e1ab..8cfaea5 100644
+index 864e1ab..60cb007 100644
 --- a/vendor/llama.cpp/ggml/src/ggml-version.h
 +++ b/vendor/llama.cpp/ggml/src/ggml-version.h
 @@ -1,4 +1,8 @@
@@ -54585,12 +54585,12 @@ index 864e1ab..8cfaea5 100644
  
 -#define GGML_VERSION "0.25.3-dev"
 -#define GGML_COMMIT  "bf9a0cc"
-+#define GGML_VERSION "@GGML_VERSION@"
-+#define GGML_COMMIT  "@GGML_BUILD_COMMIT@"
++#define GGML_VERSION "1.0.0"
++#define GGML_COMMIT  "1094646"
 +
-+#define GGML_VERSION_MAJOR (@GGML_VERSION_MAJOR@)
-+#define GGML_VERSION_MINOR (@GGML_VERSION_MINOR@)
-+#define GGML_VERSION_PATCH (@GGML_VERSION_PATCH@)
++#define GGML_VERSION_MAJOR (1)
++#define GGML_VERSION_MINOR (0)
++#define GGML_VERSION_PATCH (0)
 diff --git a/vendor/llama.cpp/ggml/src/ggml.c b/vendor/llama.cpp/ggml/src/ggml.c
 index 9bcabdb..3389dcd 100644
 --- a/vendor/llama.cpp/ggml/src/ggml.c
@@ -75665,7 +75665,7 @@ index 6c958a2..d8cd441 100644
      }
  
 diff --git a/vendor/llama.cpp/src/llama-version.h b/vendor/llama.cpp/src/llama-version.h
-index 89c9c8f..0e08176 100644
+index 89c9c8f..42f849d 100644
 --- a/vendor/llama.cpp/src/llama-version.h
 +++ b/vendor/llama.cpp/src/llama-version.h
 @@ -1,4 +1,4 @@
@@ -75673,8 +75673,8 @@ index 89c9c8f..0e08176 100644
  
 -#define LLAMA_VERSION "0.5.0-dev"
 -#define LLAMA_COMMIT  "bf9a0cc"
-+#define LLAMA_VERSION "@LLAMA_VERSION@"
-+#define LLAMA_COMMIT  "@LLAMA_BUILD_COMMIT@"
++#define LLAMA_VERSION "1.0.0"
++#define LLAMA_COMMIT  "1094646"
 diff --git a/vendor/llama.cpp/src/llama-vocab.cpp b/vendor/llama.cpp/src/llama-vocab.cpp
 index 015e983..20357e8 100644
 --- a/vendor/llama.cpp/src/llama-vocab.cpp

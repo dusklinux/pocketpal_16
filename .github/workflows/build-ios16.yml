@@ -127,7 +127,7 @@ jobs:
 
       - name: Cache Yarn packages (Linux)
         if: steps.gate.outputs.proceed == 'true'
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/yarn
           key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
@@ -177,7 +177,7 @@ jobs:
           node-version: '24.21.0'
 
       - name: Cache Yarn packages (macOS)
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/Yarn
           key: ${{ runner.os }}-yarn-${{ hashFiles('yarn.lock') }}
@@ -197,7 +197,7 @@ jobs:
         run: npx --yes yarn@1.22.22 install --frozen-lockfile --non-interactive
 
       - name: Cache CocoaPods downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/Library/Caches/CocoaPods
           key: ${{ runner.os }}-cocoapods-${{ hashFiles('ios/Podfile', 'ios/Podfile.lock', 'package.json') }}
